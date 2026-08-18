@@ -15,6 +15,8 @@ GH_PROXY_CN="${GH_PROXY_CN:-https://ghfast.top}"
 GIT_REPO="${GIT_REPO:-https://github.com/a1159645714/KM.git}"
 GIT_BRANCH="${GIT_BRANCH:-master}"
 XXGKAMI_AUTO_MODE="${XXGKAMI_AUTO_MODE:-true}"
+XXGKAMI_DEFAULT_ENV="${XXGKAMI_DEFAULT_ENV:-prod}"
+XXGKAMI_DEFAULT_BIND_DOMAIN="${XXGKAMI_DEFAULT_BIND_DOMAIN:-n}"
 
 # 项目部署根目录：源码、maven 工作区、后端 JAR（宝塔常见 /www/wwwroot/xxgkami）
 : "${XXGKAMI_DEPLOY_ROOT:=/www/wwwroot/xxgkami}"
@@ -205,7 +207,12 @@ _xxgkami_prompt_mysql_major_for_install() {
     echo -e "  安装完成后 ${YELLOW}mysql -V ${RED}会显示较高主版本号属正常；与「导入旧版 SQL 脚本」是两件事。${NC}"
     echo -e "${RED}若仍失败请改选 [1] 安装 mysql-server（多为 MySQL 8）。${NC}"
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    read -r -p "请选择 [1]=MySQL8.0 [2]=5.x/5.6脚本 (默认 1): " _msql_pick
+    if [ "$XXGKAMI_AUTO_MODE" = "true" ]; then
+        _msql_pick="1"
+        echo -e "${GREEN}[自动模式] 选择 MySQL 8.0${NC}"
+    else
+        read -r -p "请选择 [1]=MySQL8.0 [2]=5.x/5.6脚本 (默认 1): " _msql_pick
+    fi
     case "${_msql_pick:-1}" in
         2|56|5.6|5.7)
             XXGKAMI_USER_SQL_SERIES="56"
@@ -1232,9 +1239,18 @@ install_runtime_stack_interactive() {
         [ "$need_step" = false ] && continue
 
         echo ""
-        read -r -p "是否现在安装 [$comp_tag] ?（下载源：${MIR_LABEL}） [y/N]: " DO_INSTALL_THIS
+        if [ "$XXGKAMI_AUTO_MODE" = "true" ]; then
+            DO_INSTALL_THIS="y"
+            echo -e "${GREEN}[自动模式] 安装 [$comp_tag]${NC}"
+        else
+            read -r -p "是否现在安装 [$comp_tag] ?（下载源：${MIR_LABEL}） [y/N]: " DO_INSTALL_THIS
+        fi
         if [[ ! "$DO_INSTALL_THIS" =~ ^[Yy]$ ]]; then
-            read -r -p "已跳过该项。是否仍继续处理其余环境？[y/N]: " CONT_REST
+            if [ "$XXGKAMI_AUTO_MODE" = "true" ]; then
+                CONT_REST="y"
+            else
+                read -r -p "已跳过该项。是否仍继续处理其余环境？[y/N]: " CONT_REST
+            fi
             if [[ ! "$CONT_REST" =~ ^[Yy]$ ]]; then
                 echo -e "${YELLOW}用户结束环境安装向导。${NC}"
                 break
@@ -1264,7 +1280,11 @@ install_runtime_stack_interactive() {
             echo -e "${RED}✗ [$comp_tag] 安装后检测未通过，请排查日志或手动修复${NC}"
         fi
 
-        read -r -p "是否继续安装下一个环境？[y/N]: " NEXT_OK
+        if [ "$XXGKAMI_AUTO_MODE" = "true" ]; then
+            NEXT_OK="y"
+        else
+            read -r -p "是否继续安装下一个环境？[y/N]: " NEXT_OK
+        fi
         if [[ ! "$NEXT_OK" =~ ^[Yy]$ ]]; then
             echo -e "${YELLOW}已在本步后暂停，不再继续后续环境安装。${NC}"
             break
@@ -1421,7 +1441,12 @@ show_menu() {
     echo -e "4. 单独安装管理命令 (xxgkami)"
     echo -e "0. 退出"
     echo -e "${BLUE}================================================${NC}"
-    read -p "请输入选项 [0-4]: " MENU_CHOICE
+    if [ "$XXGKAMI_AUTO_MODE" = "true" ]; then
+        MENU_CHOICE="1"
+        echo -e "${GREEN}[自动模式] 选择 1：安装系统 (全新安装)${NC}"
+    else
+        read -p "请输入选项 [0-4]: " MENU_CHOICE
+    fi
 }
 
 # 循环显示菜单，直到选择安装/更新或退出
@@ -2110,7 +2135,13 @@ fi
 
 # 0. 环境选择 (Dev/Prod)
 echo -e "${YELLOW}[0/8] 环境选择...${NC}"
-read -p "请选择部署环境 (1. prod-生产环境 [默认], 2. dev-开发环境): " ENV_CHOICE
+if [ "$XXGKAMI_AUTO_MODE" = "true" ]; then
+    ENV_CHOICE="1"
+    [ "$XXGKAMI_DEFAULT_ENV" = "dev" ] && ENV_CHOICE="2"
+    echo -e "${GREEN}[自动模式] 部署环境: ${XXGKAMI_DEFAULT_ENV}${NC}"
+else
+    read -p "请选择部署环境 (1. prod-生产环境 [默认], 2. dev-开发环境): " ENV_CHOICE
+fi
 if [ "$ENV_CHOICE" == "2" ]; then
     DEPLOY_ENV="dev"
     echo -e "${GREEN}已选择: 开发环境 (dev)${NC}"
@@ -2391,13 +2422,22 @@ INSTALL_DIR="$XXGKAMI_DEPLOY_ROOT"
 mkdir -p "$(dirname "$INSTALL_DIR")"
 if [ -d "$INSTALL_DIR" ]; then
     echo -e "${YELLOW}检测到项目目录已存在: $INSTALL_DIR${NC}"
-    read -p "是否强制覆盖更新 (将丢失本地修改)? (y/n/c [取消]): " OVERWRITE_CHOICE
+    if [ "$XXGKAMI_AUTO_MODE" = "true" ]; then
+        OVERWRITE_CHOICE="y"
+        echo -e "${GREEN}[自动模式] 覆盖已有项目目录${NC}"
+    else
+        read -p "是否强制覆盖更新 (将丢失本地修改)? (y/n/c [取消]): " OVERWRITE_CHOICE
+    fi
     
     if [ "$OVERWRITE_CHOICE" == "y" ] || [ "$OVERWRITE_CHOICE" == "Y" ]; then
         echo -e "${YELLOW}正在强制更新项目...${NC}"
         
         # 询问是否备份配置文件
-        read -p "是否备份原有的 application.properties 配置文件? (y/n): " BACKUP_CHOICE
+        if [ "$XXGKAMI_AUTO_MODE" = "true" ]; then
+            BACKUP_CHOICE="y"
+        else
+            read -p "是否备份原有的 application.properties 配置文件? (y/n): " BACKUP_CHOICE
+        fi
         if [ "$BACKUP_CHOICE" == "y" ] || [ "$BACKUP_CHOICE" == "Y" ]; then
             if [ -f "$INSTALL_DIR/backend/src/main/resources/application.properties" ]; then
                 cp "$INSTALL_DIR/backend/src/main/resources/application.properties" /tmp/application.properties.bak
@@ -2873,8 +2913,10 @@ fi
 NGINX_CONF="/etc/nginx/conf.d/xxgkami-domain.conf"
 
 # 询问是否绑定域名
-BIND_DOMAIN_CHOICE="${BIND_DOMAIN_CHOICE:-n}"
-if [ -t 0 ]; then
+BIND_DOMAIN_CHOICE="${BIND_DOMAIN_CHOICE:-$XXGKAMI_DEFAULT_BIND_DOMAIN}"
+if [ "$XXGKAMI_AUTO_MODE" = "true" ]; then
+    echo -e "${GREEN}[自动模式] 使用服务器 IP 部署${NC}"
+elif [ -t 0 ]; then
     read -r -p "是否需要绑定域名？(y/n，默认 n，直接使用服务器 IP): " BIND_DOMAIN_INPUT
     [ -n "$BIND_DOMAIN_INPUT" ] && BIND_DOMAIN_CHOICE="$BIND_DOMAIN_INPUT"
 fi
