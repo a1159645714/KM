@@ -330,6 +330,10 @@ export const settingsApi = {
     return await apiRequest('/settings/all');
   },
 
+  async getAllSettings() {
+    return await this.getSettings()
+  },
+
   async getPublicSettings() {
     return await apiRequest('/settings/public');
   },
@@ -346,6 +350,10 @@ export const settingsApi = {
       method: 'POST',
       body: JSON.stringify(config)
     });
+  },
+
+  async sendTestEmail(to, config = {}) {
+    return await this.testEmail({ to, ...config })
   }
 };
 
@@ -373,6 +381,10 @@ export const maintenanceApi = {
     return await apiRequest('/maintenance/clear-logs', {
       method: 'POST'
     });
+  },
+
+  async createBackup() {
+    return await backupApi.createBackup()
   }
 };
 
@@ -390,27 +402,39 @@ export const backupApi = {
  * 缁崵绮洪惄鎴炲付API閺堝秴濮? */
 export const monitorApi = {
   async getSystemMetrics() {
-    return await apiRequest('/monitor/metrics');
+    return await apiRequest('/monitor/system');
   },
 
   async getJvmMetrics() {
-    return await apiRequest('/monitor/jvm');
+    return await apiRequest('/monitor/all');
   },
 
   async getDiskMetrics() {
-    return await apiRequest('/monitor/disk');
+    return await apiRequest('/monitor/database');
   },
 
   async getNetworkMetrics() {
-    return await apiRequest('/monitor/network');
+    return await apiRequest('/monitor/api');
   },
 
   async getProcessList() {
-    return await apiRequest('/monitor/processes');
+    return await apiRequest('/monitor/users');
   },
 
   async getAllMonitorData() {
     return await apiRequest('/monitor/all');
+  },
+
+  async getSystemStatus() {
+    return await apiRequest('/monitor/system')
+  },
+
+  async getDatabaseStatus() {
+    return await apiRequest('/monitor/database')
+  },
+
+  async getApiStatus() {
+    return await apiRequest('/monitor/api')
   },
 
   async checkUpdate() {
@@ -423,6 +447,18 @@ export const monitorApi = {
 export const statsApi = {
   async getStats() {
     return await apiRequest('/stats');
+  },
+
+  async getDashboardStats() {
+    return await apiRequest('/stats/dashboard')
+  },
+
+  async getCardUsageTrends(days = 7) {
+    return await apiRequest(`/cards/trend?days=${days}`)
+  },
+
+  async getUserActivityStats(days = 7) {
+    return await apiRequest(`/stats/user-activity?days=${days}`)
   }
 };
 
@@ -439,6 +475,13 @@ export const onlineApi = {
 export const userApi = {
   async getUsers() {
     return await apiRequest('/admin/users');
+  },
+
+  async updateUserStatus(id, status) {
+    return await apiRequest(`/admin/users/${id}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ status })
+    })
   },
 
   async createUser(user) {
@@ -630,6 +673,14 @@ export const apiKeyApi = {
     return await apiRequest('/admin/apikeys');
   },
 
+  async getAllApiKeys() {
+    return await this.getApiKeys()
+  },
+
+  async getAllUsers() {
+    return await apiRequest('/admin/users')
+  },
+
   async createApiKey(data) {
     return await apiRequest('/admin/apikeys', {
       method: 'POST',
@@ -652,6 +703,19 @@ export const apiKeyApi = {
 
   async getApiKeyStats(id) {
     return await apiRequest(`/admin/apikeys/${id}/stats`);
+  },
+
+  async assignUser(id, userId) {
+    return await apiRequest(`/admin/apikeys/${id}/users`, {
+      method: 'POST',
+      body: JSON.stringify({ userId })
+    })
+  },
+
+  async unassignUser(id, userId) {
+    return await apiRequest(`/admin/apikeys/${id}/users/${userId}`, {
+      method: 'DELETE'
+    })
   }
 };
 
@@ -695,7 +759,10 @@ export const orderApi = {
     return await apiRequest('/orders');
   },
 
-  async getAllOrders() {
+  async getAllOrders(params = {}) {
+    if (params && Object.keys(params).length > 0) {
+      return await this.searchOrders(params)
+    }
     return await apiRequest('/orders/admin/list');
   },
 
@@ -739,38 +806,52 @@ export const oauthApi = {
  * 閻劍鍩涙稉顏冩眽鐠у嫭鏋PI閺堝秴濮? */
 export const userProfileApi = {
   async getProfile() {
-    return await apiRequest('/auth/user/profile');
+    return await apiRequest('/user/profile');
   },
 
   async updateProfile(data) {
-    return await apiRequest('/auth/user/profile', {
+    return await apiRequest('/user/profile', {
       method: 'PUT',
       body: JSON.stringify(data)
     });
   },
 
   async changePassword(oldPassword, newPassword) {
-    return await apiRequest('/auth/user/password', {
-      method: 'PUT',
+    return await apiRequest('/user/password', {
+      method: 'POST',
       body: JSON.stringify({ oldPassword, newPassword })
     });
   },
 
   async getSocialAccounts() {
-    return await apiRequest('/auth/user/social-accounts');
+    return await apiRequest('/user/social');
+  },
+
+  async getSocialBindings() {
+    return await this.getSocialAccounts()
   },
 
   async unbindSocial(type) {
-    return await apiRequest(`/auth/user/social-unbind/${type}`, {
-      method: 'POST'
+    return await apiRequest('/user/social/unbind', {
+      method: 'POST',
+      body: JSON.stringify({ type })
     });
   },
 
   async bindSocial(token) {
-    return await apiRequest('/auth/user/social-bind', {
+    return await apiRequest('/user/social/bind', {
       method: 'POST',
       body: JSON.stringify({ token })
     });
+  },
+
+  async uploadAvatar(file) {
+    const formData = new FormData()
+    formData.append('file', file)
+    return await apiRequest('/user/avatar', {
+      method: 'POST',
+      body: formData
+    })
   }
 };
 
