@@ -71,8 +71,8 @@ public class UserService {
     }
 
     public void bindSocial(Long userId, String registerToken) {
-        // Validate token
-        if (registerToken == null || !jwtUtil.validateToken(registerToken, jwtUtil.extractUsername(registerToken))) {
+        // Validate token：必须是 OAuth 回调签发的「注册/绑定」专用令牌，普通 access token 一律拒绝
+        if (registerToken == null || !jwtUtil.validateRegisterToken(registerToken)) {
              throw new RuntimeException("绑定令牌无效或已过期");
         }
         

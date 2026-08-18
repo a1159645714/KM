@@ -127,8 +127,8 @@ CREATE TABLE `card_pricing`  (
 -- ----------------------------
 -- Records of card_pricing
 -- ----------------------------
-INSERT INTO `card_pricing` VALUES (1, 'time', 7, 0.01, '7天时间卡', '2026-01-14 20:01:56', '2026-01-16 11:47:56');
-INSERT INTO `card_pricing` VALUES (2, 'time', 15, 0.02, '15天时间卡', '2026-01-14 20:01:56', '2026-01-16 11:52:46');
+INSERT INTO `card_pricing` VALUES (1, 'time', 7, 9.90, '7天时间卡', '2026-01-14 20:01:56', '2026-01-16 11:47:56');
+INSERT INTO `card_pricing` VALUES (2, 'time', 15, 18.80, '15天时间卡', '2026-01-14 20:01:56', '2026-01-16 11:52:46');
 INSERT INTO `card_pricing` VALUES (3, 'time', 30, 35.00, '30天时间卡', '2026-01-14 20:01:56', '2026-01-14 20:01:56');
 INSERT INTO `card_pricing` VALUES (4, 'time', 60, 65.00, '60天时间卡', '2026-01-14 20:01:56', '2026-01-14 20:01:56');
 INSERT INTO `card_pricing` VALUES (5, 'time', 90, 90.00, '90天时间卡', '2026-01-14 20:01:56', '2026-01-14 20:01:56');
@@ -449,11 +449,12 @@ INSERT INTO `system_maintenance` VALUES (1, 0, '系统正在维护中，请稍�
 DROP TABLE IF EXISTS `user_api_keys`;
 CREATE TABLE `user_api_keys`  (
   `id` bigint NOT NULL AUTO_INCREMENT,
-  `user_id` bigint NOT NULL,
-  `api_key_id` bigint NOT NULL,
+  `user_id` int NOT NULL,
+  `api_key_id` int NOT NULL,
   `assign_time` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE INDEX `user_id`(`user_id` ASC, `api_key_id` ASC) USING BTREE
+  UNIQUE INDEX `user_id`(`user_id` ASC, `api_key_id` ASC) USING BTREE,
+  INDEX `idx_uak_api_key`(`api_key_id` ASC) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 4 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
@@ -541,5 +542,10 @@ CREATE TABLE `verification_codes`  (
 -- ----------------------------
 -- Records of verification_codes
 -- ----------------------------
+
+-- 外键：user_api_keys 级联清理（users 表在本文件后部定义，故放在末尾统一添加）
+ALTER TABLE `user_api_keys`
+  ADD CONSTRAINT `fk_uak_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT,
+  ADD CONSTRAINT `fk_uak_api_key` FOREIGN KEY (`api_key_id`) REFERENCES `api_keys` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT;
 
 SET FOREIGN_KEY_CHECKS = 1;

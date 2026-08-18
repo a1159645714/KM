@@ -102,12 +102,8 @@ public class ApiKeyService {
 
     @Transactional
     public void assignUser(Long apiKeyId, Long userId) {
-        // Check if already assigned
-        // For simplicity, catch duplicate key exception or check first.
-        // We'll rely on DB constraints or check list.
-        List<User> users = apiKeyMapper.getAssignedUsers(apiKeyId);
-        boolean exists = users.stream().anyMatch(u -> u.getId().equals(userId));
-        if (!exists) {
+        // 直接查询分配关系表判重（不依赖 users JOIN，避免孤儿行/脏数据导致误判）
+        if (!apiKeyMapper.existsAssignment(apiKeyId, userId)) {
             apiKeyMapper.assignUser(apiKeyId, userId);
         }
     }

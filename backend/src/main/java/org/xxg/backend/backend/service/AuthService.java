@@ -69,7 +69,7 @@ public class AuthService {
 
     public LoginResponse registerBind(RegisterBindRequest request) {
         String registerToken = request.getRegisterToken();
-        if (registerToken == null || !jwtUtil.validateToken(registerToken, jwtUtil.extractUsername(registerToken))) {
+        if (registerToken == null || !jwtUtil.validateRegisterToken(registerToken)) {
             throw new RuntimeException("注册令牌无效或已过期，请重新通过第三方登录");
         }
 

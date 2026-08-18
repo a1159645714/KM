@@ -75,6 +75,24 @@ public class JwtUtil {
         }
     }
 
+    /**
+     * 校验第三方登录的「注册/绑定」专用临时令牌。
+     * 该令牌由 OAuthService 在回调时签发，subject 固定为 "register" 且携带 type=register、
+     * socialUid、socialType 等 claims；普通 access/refresh 令牌一律拒绝，防止令牌用途混用。
+     */
+    public boolean validateRegisterToken(String token) {
+        try {
+            Claims claims = extractAllClaims(token);
+            return "register".equals(claims.getSubject())
+                    && "register".equals(claims.get("type"))
+                    && claims.get("socialUid") != null
+                    && claims.get("socialType") != null
+                    && !isTokenExpired(token);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     public String extractUsername(String token) {
         return extractAllClaims(token).getSubject();
     }

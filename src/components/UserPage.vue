@@ -675,7 +675,6 @@
 <script>
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { mockCardPrices, mockPurchaseHistory, mockPurchaseCard } from '../data/mockData.js'
 import { userProfileApi, cardApi, pricingApi, orderApi, statsApi, paymentApi, settingsApi } from '../services/api.js'
 import UserSettingsPage from './UserSettingsPage.vue'
 
@@ -941,8 +940,8 @@ export default {
     const myCards = ref([])
 
     // 购买卡密相关数据
-    const timeCardOptions = ref(mockCardPrices.timeCards)
-    const countCardOptions = ref(mockCardPrices.countCards)
+    const timeCardOptions = ref([])
+    const countCardOptions = ref([])
     const selectedTimeCard = ref(null)
     const selectedCountCard = ref(null)
     const timeCardQuantity = ref(1)
@@ -1042,15 +1041,21 @@ export default {
     const fetchPricing = async () => {
       try {
         const result = await pricingApi.getAllPricing();
-        if (result.success && result.data) {
-          timeCardOptions.value = result.data.timeCards || [];
-          countCardOptions.value = result.data.countCards || [];
+        // 后端 GET /pricing 返回 { success, data: [{ id, type, value, price, description }] }
+        const list = Array.isArray(result?.data) ? result.data : (Array.isArray(result) ? result : []);
+        if (list.length > 0) {
+          timeCardOptions.value = list
+            .filter(p => p.type === 'time')
+            .map(p => ({ id: p.id, duration: p.value, price: Number(p.price), description: p.description }));
+          countCardOptions.value = list
+            .filter(p => p.type === 'count')
+            .map(p => ({ id: p.id, count: p.value, price: Number(p.price), description: p.description }));
         }
       } catch (e) {
         console.error("Failed to fetch pricing", e);
-        // Fallback
-        timeCardOptions.value = mockCardPrices.timeCards;
-        countCardOptions.value = mockCardPrices.countCards;
+        timeCardOptions.value = [];
+        countCardOptions.value = [];
+        ElMessage.error('加载卡密定价失败');
       }
     }
 

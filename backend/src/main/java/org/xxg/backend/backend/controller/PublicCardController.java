@@ -28,6 +28,17 @@ public class PublicCardController {
         return k;
     }
 
+    private String extractMachineCode(Map<String, String> body) {
+        if (body == null) {
+            return null;
+        }
+        String m = body.get("machine_code");
+        if (m == null) {
+            m = body.get("machineCode");
+        }
+        return m;
+    }
+
     /**
      * 查询卡密是否已绑定机器码
      */
@@ -43,13 +54,14 @@ public class PublicCardController {
     }
 
     /**
-     * 解绑：清空 machine_code、device_id，并清理「同机同规格」核销记录
+     * 解绑：校验当前机器码一致后清空 machine_code、device_id，并清理「同机同规格」核销记录
      */
     @PostMapping("/machine-bind/unbind")
     public ResponseEntity<Map<String, Object>> unbindMachine(@RequestBody(required = false) Map<String, String> body) {
         try {
             String cardKey = extractCardKey(body);
-            cardService.publicUnbindMachine(cardKey);
+            String machineCode = extractMachineCode(body);
+            cardService.publicUnbindMachine(cardKey, machineCode);
             return ResponseEntity.ok(Map.of("success", true, "message", "解绑成功"));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("success", false, "message", e.getMessage()));

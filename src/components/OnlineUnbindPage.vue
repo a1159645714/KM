@@ -122,13 +122,18 @@ async function query() {
 async function unbind() {
   if (!canUnbind.value) return
   const key = cardKeyInput.value.trim()
+  const machineCode = dataPayload.value?.machineCode || ''
+  if (!machineCode) {
+    errorMsg.value = '未获取到当前绑定的机器码，无法解绑'
+    return
+  }
   if (!window.confirm('确定要解绑当前设备吗？解绑后可在新设备上重新绑定。')) {
     return
   }
   loadingUnbind.value = true
   errorMsg.value = ''
   try {
-    const res = await cardApi.publicMachineUnbind(key)
+    const res = await cardApi.publicMachineUnbind(key, machineCode)
     if (res.success) {
       window.alert(res.message || '解绑成功')
       await query()

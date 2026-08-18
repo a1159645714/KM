@@ -196,8 +196,11 @@ const handleOAuthCallback = async () => {
         userInfo.value = res.data
         localStorage.setItem('userInfo', JSON.stringify(res.data))
         isLoggedIn.value = true
-        // Clean URL
-        window.history.replaceState({}, document.title, window.location.pathname);
+        // Clean URL：同时清掉 search 与 OAuth 回调 hash，避免刷新时再次命中回调分支
+        window.history.replaceState({}, document.title, '/');
+        if (window.location.hash.includes('/oauth/callback')) {
+          window.location.hash = '#/user';
+        }
         currentPage.value = 'user'
       } else {
           console.error('OAuth login failed:', res);
@@ -289,8 +292,8 @@ onBeforeUnmount(() => {
 
 <template>
   <div id="app">
-    <!-- 系统维护遮罩层 -->
-    <div v-if="maintenanceData && maintenanceData.enabled && (!isLoggedIn || userInfo?.role !== 'admin') && currentPage !== 'login' && currentPage !== 'dashboard' && currentPage !== 'online-unbind'" class="maintenance-overlay">
+    <!-- 系统维护遮罩层（首页/登录/在线解绑/管理后台为入口页，不拦截） -->
+    <div v-if="maintenanceData && maintenanceData.enabled && (!isLoggedIn || userInfo?.role !== 'admin') && !['home', 'login', 'dashboard', 'online-unbind'].includes(currentPage)" class="maintenance-overlay">
       <div class="maintenance-content">
         <div class="maintenance-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

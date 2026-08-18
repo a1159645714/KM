@@ -139,6 +139,23 @@ public class OrderMapper {
         return jdbcTemplate.update(sql, status, orderNo);
     }
 
+    /**
+     * 原子推进：仅当订单仍为 pending 时置为 processing，返回受影响行数。
+     * 并发支付回调只有第一个成功者能拿到 1，从而避免重复发卡。
+     */
+    public int markProcessingIfPending(String orderNo) {
+        String sql = "UPDATE orders SET status = 'processing' WHERE order_no = ? AND status = 'pending'";
+        return jdbcTemplate.update(sql, orderNo);
+    }
+
+    /**
+     * 原子完成：仅当订单处于 processing 时写入卡密与支付时间，返回受影响行数。
+     */
+    public int completeOrder(String orderNo, String cardKeys, java.time.LocalDateTime payTime) {
+        String sql = "UPDATE orders SET status = 'completed', pay_time = ?, card_keys = ? WHERE order_no = ? AND status = 'processing'";
+        return jdbcTemplate.update(sql, Timestamp.valueOf(payTime), cardKeys, orderNo);
+    }
+
     public Order findByCardKey(String cardKey) {
         String sql = "SELECT * FROM orders WHERE card_keys LIKE ? LIMIT 1";
         try {

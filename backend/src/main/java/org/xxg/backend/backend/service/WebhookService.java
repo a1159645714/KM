@@ -82,7 +82,9 @@ public class WebhookService {
                         StringBuilder query = new StringBuilder();
                         for (Map.Entry<String, String> entry : requestData.entrySet()) {
                             if (query.length() > 0) query.append("&");
-                            query.append(entry.getKey()).append("=").append(entry.getValue());
+                            query.append(java.net.URLEncoder.encode(entry.getKey(), java.nio.charset.StandardCharsets.UTF_8))
+                                 .append("=")
+                                 .append(java.net.URLEncoder.encode(entry.getValue() == null ? "" : entry.getValue(), java.nio.charset.StandardCharsets.UTF_8));
                         }
                         String finalUrl = targetUrl.contains("?") ? targetUrl + "&" + query : targetUrl + "?" + query;
                         restTemplate.getForObject(finalUrl, String.class);

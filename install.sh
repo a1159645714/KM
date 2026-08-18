@@ -96,16 +96,38 @@ _xxgkami_bake_backend_datasource_props() {
 }
 
 # systemd EnvironmentFile：Spring Boot 会以环境变量覆盖 JAR 内嵌 spring.datasource.*，防止构建与实况不一致
-_xxgkami_write_db_env_for_systemd() {
+# 参数：DB用户 DB密码 JWT_SECRET(为空则沿用已有值) CORS来源(逗号分隔)
+# 整体重写文件（不追加），避免重复安装/更新产生重复键；JWT_SECRET 变更会使全部登录态失效，故尽量保留。
+_xxgkami_write_env_file() {
+    local du="$1" dp="$2" jwt_in="$3" cors_in="$4"
     local dir="/etc/xxgkami"
     local f="$dir/backend-datasource.env"
     mkdir -p "$dir"
     chmod 700 "$dir" 2>/dev/null || true
+    local jwt_val="$jwt_in" cors_val="$cors_in"
+    if [ -z "$jwt_val" ] && [ -f "$f" ]; then
+        jwt_val=$(grep -m1 '^JWT_SECRET=' "$f" 2>/dev/null | cut -d= -f2- | tr -d '\r')
+    fi
+    if [ -z "$cors_val" ] && [ -f "$f" ]; then
+        cors_val=$(grep -m1 '^CORS_ALLOWED_ORIGINS=' "$f" 2>/dev/null | cut -d= -f2- | tr -d '\r')
+    fi
+    local tmp="${f}.$$"
+    umask 077
     {
-        printf '%s=%s\n' "SPRING_DATASOURCE_USERNAME" "$DB_USER"
-        printf '%s=%s\n' "SPRING_DATASOURCE_PASSWORD" "$DB_PASSWORD"
-    } > "$f"
+        printf 'SPRING_DATASOURCE_USERNAME=%s\n' "$du"
+        printf 'SPRING_DATASOURCE_PASSWORD=%s\n' "$dp"
+        [ -n "$jwt_val" ] && printf 'JWT_SECRET=%s\n' "$jwt_val"
+        [ -n "$cors_val" ] && printf 'CORS_ALLOWED_ORIGINS=%s\n' "$cors_val"
+        printf 'JWT_ACCESS_EXPIRATION_MS=%s\n' "${JWT_ACCESS_EXPIRATION_MS:-3600000}"
+        printf 'JWT_REFRESH_EXPIRATION_MS=%s\n' "${JWT_REFRESH_EXPIRATION_MS:-604800000}"
+    } >"$tmp"
+    mv -f "$tmp" "$f"
     chmod 600 "$f"
+}
+
+# 兼容旧调用名（保留别名，防止其他位置引用）
+_xxgkami_write_db_env_for_systemd() {
+    _xxgkami_write_env_file "$DB_USER" "$DB_PASSWORD" "$JWT_SECRET" ""
 }
 
 # 将安装时的数据库凭证、前台/后台地址与默认管理员信息写入部署根（供「更新」免交互读取）；权限 600
@@ -137,6 +159,15 @@ _xxgkami_verify_admin_password() {
     local expected_hash
     expected_hash=$(mysql -N -B -u"$DB_USER" -p"$mysql_pass" "$DB_NAME" -e "SELECT password FROM admins WHERE username='admin' LIMIT 1;" 2>/dev/null | tr -d '\r') || return 1
     [ -n "$expected_hash" ] || return 1
+    # python3 / bcrypt 缺失时跳过校验（密码已写入，不影响后续登录），避免最小化系统安装中止
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo -e "${YELLOW}[Admin] 未安装 python3，跳过 bcrypt 密码校验（密码已写入，可稍后登录验证）。${NC}"
+        return 0
+    fi
+    if ! python3 -c 'import bcrypt' >/dev/null 2>&1; then
+        echo -e "${YELLOW}[Admin] python3 bcrypt 模块不可用，跳过密码校验（密码已写入，可稍后登录验证）。${NC}"
+        return 0
+    fi
     export XXGKAMI_VERIFY_ADMIN_HASH="$expected_hash"
     export XXGKAMI_VERIFY_ADMIN_PASSWORD="$plain_password"
     python3 - <<'PY'
@@ -149,6 +180,57 @@ PY
     local status=$?
     unset XXGKAMI_VERIFY_ADMIN_HASH XXGKAMI_VERIFY_ADMIN_PASSWORD
     return $status
+}
+
+# 获取公网 IPv4：带超时与多重回退，避免无网环境卡住安装
+_xxgkami_get_public_ip() {
+    local ip=""
+    ip=$(curl -s -4 --connect-timeout 3 --max-time 6 ifconfig.me 2>/dev/null) \
+        || ip=$(curl -s --connect-timeout 3 --max-time 6 ifconfig.me 2>/dev/null)
+    if [ -z "$ip" ]; then
+        ip=$(curl -s -4 --connect-timeout 3 --max-time 6 ip.sb 2>/dev/null)
+    fi
+    if [ -z "$ip" ]; then
+        ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+    fi
+    if [ -z "$ip" ] || [ "$ip" = "127.0.0.1" ]; then
+        ip=$(curl -s -4 --connect-timeout 3 --max-time 6 ipinfo.io/ip 2>/dev/null)
+    fi
+    [ -n "$ip" ] && printf '%s' "$ip" || printf '127.0.0.1'
+}
+
+# Spring Boot 3.5 需要 Maven >= 3.6.3；系统源过老时下载官方 3.9.x 二进制到 /opt/apache-maven 并优先使用
+_xxgkami_ensure_maven_modern() {
+    local mv mvmaj mvmin
+    if ! command -v mvn >/dev/null 2>&1; then
+        echo -e "${RED}未找到 mvn，无法编译后端。${NC}"
+        return 1
+    fi
+    mv=$(mvn -v 2>/dev/null | grep -m1 'Apache Maven' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)
+    [ -n "$mv" ] || return 0
+    mvmaj=$(echo "$mv" | cut -d. -f1)
+    mvmin=$(echo "$mv" | cut -d. -f2)
+    if [ "$mvmaj" -gt 3 ] 2>/dev/null || { [ "$mvmaj" -eq 3 ] 2>/dev/null && [ "$mvmin" -ge 6 ]; }; then
+        return 0
+    fi
+    echo -e "${YELLOW}[Maven] 当前版本 ${mv} 过老（Spring Boot 3.5 需 >= 3.6.3），尝试下载 Apache Maven 3.9.9 到 /opt/apache-maven …${NC}"
+    local tmp=/tmp/apache-maven.tar.gz
+    curl -fsSL --connect-timeout 10 "https://dlcdn.apache.org/maven/maven-3/3.9.9/binaries/apache-maven-3.9.9-bin.tar.gz" -o "$tmp" 2>/dev/null \
+        || curl -fsSL --connect-timeout 10 "https://archive.apache.org/dist/maven/maven-3/3.9.9/binaries/apache-maven-3.9.9-bin.tar.gz" -o "$tmp" 2>/dev/null \
+        || { echo -e "${RED}[Maven] 官方二进制下载失败，请手动安装 Maven 3.6.3+。${NC}"; return 1; }
+    rm -rf /opt/apache-maven
+    mkdir -p /opt/apache-maven
+    if ! tar -xzf "$tmp" -C /opt/apache-maven --strip-components=1 2>/dev/null; then
+        echo -e "${RED}[Maven] 解压失败。${NC}"
+        rm -f "$tmp"
+        return 1
+    fi
+    rm -f "$tmp"
+    ln -sf /opt/apache-maven/bin/mvn /usr/local/bin/mvn
+    hash -r 2>/dev/null || true
+    mv=$(mvn -v 2>/dev/null | grep -m1 'Apache Maven' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)
+    [ -n "$mv" ] && echo -e "${GREEN}[Maven] 已升级到 ${mv}${NC}"
+    return 0
 }
 
 # 检查是否为 root 用户
@@ -262,16 +344,18 @@ _xxgkami_should_use_kami_mysql56_sql() {
     return 1
 }
 
-# 根据目录与上文规则，选出存在的种子 SQL 路径（兼容 database/ 与 databaes 拼写）
+# 根据目录与上文规则，选出存在的种子 SQL 路径（兼容 database/ 与 databaes 拼写，并回退仓库根目录）
 _xxgkami_pick_kami_seed_sql_file() {
     local inst="${1%/}" p=""
     local k8_a="${inst}/databaes/kami.sql"
     local k8_b="${inst}/database/kami.sql"
+    local k8_c="${inst}/kami.sql"
     local k56_a="${inst}/databaes/kami_mysql56.sql"
     local k56_b="${inst}/database/kami_mysql56.sql"
+    local k56_c="${inst}/kami_mysql56.sql"
 
     if _xxgkami_should_use_kami_mysql56_sql; then
-        for p in "$k56_a" "$k56_b"; do
+        for p in "$k56_a" "$k56_b" "$k56_c"; do
             [ -f "$p" ] && { echo "$p"; return 0; }
         done
         if [ "${MYSQL_SERVER_IS_MARIADB:-false}" = true ]; then
@@ -280,7 +364,7 @@ _xxgkami_pick_kami_seed_sql_file() {
             echo -e "${YELLOW}[SQL] 未找到 kami_mysql56.sql ，将回退为 kami.sql（若仍失败请检查仓库）。${NC}" >&2
         fi
     fi
-    for p in "$k8_a" "$k8_b"; do
+    for p in "$k8_a" "$k8_b" "$k8_c"; do
         [ -f "$p" ] && { echo "$p"; return 0; }
     done
     return 1
@@ -294,6 +378,13 @@ _xxgkami_prompt_existing_database_strategy() {
 
     [ "${k_exists:-0}" -eq 1 ] 2>/dev/null || return 0
     [ "${tbl_cnt:-0}" -gt 0 ] 2>/dev/null || return 0
+
+    # 自动模式：默认「智能更新（merge）」，绝不删除数据，也避免无人值守时 read 空转
+    if [ "$XXGKAMI_AUTO_MODE" = "true" ]; then
+        echo -e "${GREEN}[自动模式] 数据库已存在且有表，默认选择：智能更新（merge，保留数据）。${NC}"
+        XXGKAMI_DB_ACTION=merge
+        return 0
+    fi
 
     while true; do
         echo ""
@@ -1488,6 +1579,8 @@ while true; do
             _RAW_MASTER="https://raw.githubusercontent.com/a1159645714/KM/master/install.sh"
             if wget -O install.sh "$_RAW_MASTER" 2>/dev/null || curl -fsSL -o install.sh "$_RAW_MASTER"; then
                 chmod +x install.sh
+            elif [ -n "$GH_PROXY_CN" ] && { wget -O install.sh "${GH_PROXY_CN}/${_RAW_MASTER}" 2>/dev/null || curl -fsSL -o install.sh "${GH_PROXY_CN}/${_RAW_MASTER}"; }; then
+                chmod +x install.sh
             else
                 echo -e "${RED}脚本下载失败（请检查 GitHub 网络连接）${NC}"
                 exit 1
@@ -1508,10 +1601,6 @@ while true; do
             # 这里先临时定义一个变量来控制流程
             ONLY_INSTALL_CMD=true
             break
-            ;;
-        5)
-            modify_db_config
-            # 不需要 break，继续循环
             ;;
         0)
             echo -e "${GREEN}感谢使用，再见！${NC}"
@@ -1593,11 +1682,27 @@ _xxgkami_embed_ensure_java_home() {
 
 _xxgkami_embed_refresh_backend_datasource_env() {
     local _du="\$1" _dp="\$2"
+    local _f=/etc/xxgkami/backend-datasource.env
+    local _jwt="" _cors="" _acc="" _ref=""
+    # 保留已有 JWT_SECRET/CORS 等键：直接截断重写会丢失 JWT_SECRET，导致更新后全部用户登录态失效
+    if [ -f "\$_f" ]; then
+        _jwt=\$(grep -m1 '^JWT_SECRET=' "\$_f" 2>/dev/null | cut -d= -f2- | tr -d '\r')
+        _cors=\$(grep -m1 '^CORS_ALLOWED_ORIGINS=' "\$_f" 2>/dev/null | cut -d= -f2- | tr -d '\r')
+        _acc=\$(grep -m1 '^JWT_ACCESS_EXPIRATION_MS=' "\$_f" 2>/dev/null | cut -d= -f2- | tr -d '\r')
+        _ref=\$(grep -m1 '^JWT_REFRESH_EXPIRATION_MS=' "\$_f" 2>/dev/null | cut -d= -f2- | tr -d '\r')
+    fi
     mkdir -p /etc/xxgkami
     chmod 700 /etc/xxgkami 2>/dev/null || true
-    printf \$'SPRING_DATASOURCE_USERNAME=%s\n' "\${_du}" > /etc/xxgkami/backend-datasource.env
-    printf \$'SPRING_DATASOURCE_PASSWORD=%s\n' "\${_dp}" >> /etc/xxgkami/backend-datasource.env
-    chmod 600 /etc/xxgkami/backend-datasource.env
+    local _tmp="\$_f.\$\$"
+    {
+        printf \$'SPRING_DATASOURCE_USERNAME=%s\n' "\${_du}"
+        printf \$'SPRING_DATASOURCE_PASSWORD=%s\n' "\${_dp}"
+        [ -n "\$_jwt" ] && printf \$'JWT_SECRET=%s\n' "\${_jwt}"
+        [ -n "\$_cors" ] && printf \$'CORS_ALLOWED_ORIGINS=%s\n' "\${_cors}"
+        [ -n "\$_acc" ] && printf \$'JWT_ACCESS_EXPIRATION_MS=%s\n' "\${_acc}"
+        [ -n "\$_ref" ] && printf \$'JWT_REFRESH_EXPIRATION_MS=%s\n' "\${_ref}"
+    } > "\$_tmp" && mv -f "\$_tmp" "\$_f"
+    chmod 600 "\$_f"
 }
 
 _xxgkami_embed_find_frontend_dist_dir() {
@@ -1720,10 +1825,10 @@ _xxgkami_embed_pick_seed_sql_path_for_update() {
 
     case "\$_ver_line" in *MariaDB*|*mariadb*)
         echo -e "\${GREEN}[更新][SQL] VERSION()=\${_ver_line} → MariaDB：databaes/kami_mysql56.sql（避免 kami.sql 中 MySQL 8 专属排序规则报错）\${NC}" >&2
-        for p in "\$base/databaes/kami_mysql56.sql" "\$base/database/kami_mysql56.sql"; do
+        for p in "\$base/databaes/kami_mysql56.sql" "\$base/database/kami_mysql56.sql" "\$base/kami_mysql56.sql"; do
             [ -f "\$p" ] && { echo "\$p"; return 0; }
         done
-        for p in "\$base/databaes/kami.sql" "\$base/database/kami.sql"; do
+        for p in "\$base/databaes/kami.sql" "\$base/database/kami.sql" "\$base/kami.sql"; do
             [ -f "\$p" ] && { echo "\$p"; return 0; }
         done
         echo "\$base/databaes/kami_mysql56.sql"
@@ -1735,7 +1840,7 @@ _xxgkami_embed_pick_seed_sql_path_for_update() {
 
     if [ -n "\$_ver_num" ] && awk -v v="\$_ver_num" 'BEGIN {exit !(v >= 8.0)}'; then
         echo -e "\${GREEN}[更新][SQL] VERSION()=\${_ver_line}（\${_ver_num}）→ Oracle MySQL 8+：databaes/kami.sql\${NC}" >&2
-        for p in "\$base/databaes/kami.sql" "\$base/database/kami.sql"; do
+        for p in "\$base/databaes/kami.sql" "\$base/database/kami.sql" "\$base/kami.sql"; do
             [ -f "\$p" ] && { echo "\$p"; return 0; }
         done
         echo "\$base/databaes/kami.sql"
@@ -1744,10 +1849,10 @@ _xxgkami_embed_pick_seed_sql_path_for_update() {
 
     if [ -n "\$_ver_num" ] && awk -v v="\$_ver_num" 'BEGIN {exit !(v >= 5.6 && v < 8.0)}'; then
         echo -e "\${GREEN}[更新][SQL] VERSION()=\${_ver_line}（\${_ver_num}）→ 5.6～8 以下 Oracle MySQL：databaes/kami_mysql56.sql\${NC}" >&2
-        for p in "\$base/databaes/kami_mysql56.sql" "\$base/database/kami_mysql56.sql"; do
+        for p in "\$base/databaes/kami_mysql56.sql" "\$base/database/kami_mysql56.sql" "\$base/kami_mysql56.sql"; do
             [ -f "\$p" ] && { echo "\$p"; return 0; }
         done
-        for p in "\$base/databaes/kami.sql" "\$base/database/kami.sql"; do
+        for p in "\$base/databaes/kami.sql" "\$base/database/kami.sql" "\$base/kami.sql"; do
             [ -f "\$p" ] && { echo "\$p"; return 0; }
         done
         echo "\$base/databaes/kami_mysql56.sql"
@@ -1776,6 +1881,13 @@ _xxgkami_embed_prompt_existing_database_strategy() {
 
     [ "\${k_ex:-0}" -eq 1 ] 2>/dev/null || return 0
     [ "\${t_cn:-0}" -gt 0 ] 2>/dev/null || return 0
+
+    # 非交互终端（无人值守/CI）时默认智能更新（merge），避免 read 空转死循环
+    if [ ! -t 0 ]; then
+        echo -e "\${YELLOW}[自动] 非交互终端：数据库已存在且有表，默认选择智能更新（merge）。\${NC}"
+        XXGKAMI_DB_ACTION=merge
+        return 0
+    fi
 
     while true; do
         echo ""
@@ -1995,7 +2107,7 @@ while true; do
             cd "\$INSTALL_DIR/backend" || { echo -e "\${RED}后端目录不存在\${NC}"; continue; }
             _xxgkami_embed_bake_jdbc_before_mvn "\$DB_USER" "\$DB_PWD" || { echo -e "\${RED}bake JDBC 写入 application.properties 失败\${NC}"; continue; }
             _xxgkami_embed_ensure_java_home || { echo -e "\${RED}[Java] JAVA_HOME/Maven 需要完整 JDK ，请排查后重试更新\${NC}"; continue; }
-            mvn clean package -DskipTests
+            mvn clean package -DskipTests || { echo -e "\${RED}[更新] Maven 打包失败，已停止本次更新。\${NC}"; continue; }
             _J=\$(find target -maxdepth 1 -type f -name "backend-*.jar" ! -name "*-plain.jar" ! -name "*-sources.jar" ! -name "*-javadoc.jar" 2>/dev/null | head -n 1)
             [ -z "\$_J" ] && _J=\$(find target -maxdepth 1 -type f -name "backend-*.jar" ! -name "*-sources.jar" 2>/dev/null | head -n 1)
             if [ -z "\$_J" ]; then
@@ -2024,19 +2136,19 @@ while true; do
             fi
             if [ "\$IS_CHINA" = true ]; then
                 npm config set registry https://registry.npmmirror.com/
-                npm install
+                npm install || { echo -e "\${RED}[更新] npm install 失败，已停止本次更新。\${NC}"; continue; }
             else
                 npm config set registry https://registry.npmjs.org/
-                npm install
+                npm install || { echo -e "\${RED}[更新] npm install 失败，已停止本次更新。\${NC}"; continue; }
             fi
             if [ "\$DEPLOY_ENV" = "dev" ]; then
                 if grep -q "build:dev" package.json; then
-                    npm run build:dev
+                    npm run build:dev || { echo -e "\${RED}[更新] 前端构建失败，已停止本次更新。\${NC}"; continue; }
                 else
-                    npm run build
+                    npm run build || { echo -e "\${RED}[更新] 前端构建失败，已停止本次更新。\${NC}"; continue; }
                 fi
             else
-                npm run build
+                npm run build || { echo -e "\${RED}[更新] 前端构建失败，已停止本次更新。\${NC}"; continue; }
             fi
             _xxgkami_embed_sync_frontend_to_webroot "\$INSTALL_DIR" "\$WEB_ROOT" || { echo -e "\${RED}前端同步失败\${NC}"; continue; }
             echo -e "\${YELLOW}正在修复前端文件权限 (\$WEB_ROOT) ...\${NC}"
@@ -2095,7 +2207,7 @@ while true; do
                 
                 echo -e "\${YELLOW}删除文件...\${NC}"
                 rm -rf \$INSTALL_DIR
-                rm -rf "\$WEB_ROOT"/*
+                rm -rf "\$WEB_ROOT"/* 2>/dev/null || true
                 rm -f /etc/nginx/conf.d/xxgkami.conf /etc/nginx/conf.d/xxgkami-domain.conf
                 systemctl reload nginx
                 
@@ -2199,6 +2311,10 @@ check_port() {
 
     if [ -n "$pid" ]; then
         echo -e "${YELLOW}警告: 端口 $port ($desc) 已被占用 (PID: $pid)。${NC}"
+        if [ "$XXGKAMI_AUTO_MODE" = "true" ] || [ ! -t 0 ]; then
+            echo -e "${YELLOW}[自动模式] 不终止占用进程，请确保其与本次部署不冲突。${NC}"
+            return 1
+        fi
         read -p "是否尝试终止占用该端口的进程? (y/n): " KILL_CHOICE
         if [ "$KILL_CHOICE" == "y" ] || [ "$KILL_CHOICE" == "Y" ]; then
             kill -9 $pid
@@ -2226,7 +2342,11 @@ if need_mysql_install >/dev/null 2>&1; then
 fi
 
 [ "$SKIP_PORT_80" != true ] && check_port 80 "Nginx Web"
-check_port 8080 "Backend API"
+if systemctl is-active --quiet xxgkami 2>/dev/null; then
+    echo -e "${GREEN}已检测到 xxgkami 后端服务正在运行，跳过 8080 端口检测（视为本项目后端）。${NC}"
+else
+    check_port 8080 "Backend API"
+fi
 [ "$SKIP_PORT_3306" != true ] && check_port 3306 "MySQL Database"
 
 echo -e "${BLUE}------------------------------------------------${NC}"
@@ -2364,18 +2484,28 @@ check_mysql_version
 
 if [ -f /etc/debian_version ]; then
     # Debian/Ubuntu（索引已在 [1/8] 开始处 apt-get update）
-    DEBIAN_FRONTEND=noninteractive apt-get install -y git curl wget unzip maven
+    DEBIAN_FRONTEND=noninteractive apt-get install -y git curl wget unzip maven python3 python3-bcrypt
 elif [ -f /etc/redhat-release ]; then
     # CentOS 7 maven 等在 EPEL 或 PowerTools/Codeready 较多；先做 EPEL 再安装
     _xxgkami_ensure_epel_rhel_optional
     # CentOS/RHEL（优先 dnf）
     if command -v dnf >/dev/null 2>&1; then
-        dnf install -y git curl wget unzip maven
+        dnf install -y git curl wget unzip maven python3 python3-bcrypt 2>/dev/null \
+            || dnf install -y git curl wget unzip maven python3 2>/dev/null \
+            || true
     else
-        yum install -y git curl wget unzip maven
+        yum install -y git curl wget unzip maven python3 python3-bcrypt 2>/dev/null \
+            || yum install -y git curl wget unzip maven python3 2>/dev/null \
+            || true
     fi
 else
     echo -e "${RED}不支持的操作系统，请手动安装依赖${NC}"
+    exit 1
+fi
+
+# Maven 版本检查：Spring Boot 3.5 需要 Maven >= 3.6.3，过老时自动下载官方二进制
+if ! _xxgkami_ensure_maven_modern; then
+    echo -e "${RED}Maven 版本不满足且自动升级失败，请手动安装 Maven 3.6.3+。${NC}"
     exit 1
 fi
 
@@ -2685,6 +2815,7 @@ if [ -f "$SQL_FILE" ]; then
     unset -f run_merge_db 2>/dev/null || true
 else
     echo -e "${RED}错误：找不到数据库文件 $SQL_FILE${NC}"
+    exit 1
 fi
 
 JWT_SECRET="${JWT_SECRET:-$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 48)}"
@@ -2717,13 +2848,6 @@ else
 fi
 
 _xxgkami_write_db_env_for_systemd
-{
-    printf '%s=%s\n' "JWT_SECRET" "$JWT_SECRET"
-    printf '%s=%s\n' "CORS_ALLOWED_ORIGINS" "http://${SERVER_NAME:-${PUBLIC_IP:-$(curl -s -4 ifconfig.me || echo 127.0.0.1)}}"
-    printf '%s=%s\n' "JWT_ACCESS_EXPIRATION_MS" "3600000"
-    printf '%s=%s\n' "JWT_REFRESH_EXPIRATION_MS" "604800000"
-} >> /etc/xxgkami/backend-datasource.env
-chmod 600 /etc/xxgkami/backend-datasource.env
 
 echo -e "${GREEN}已写入 /etc/xxgkami/backend-datasource.env（仅 systemctl 启动时读取；宝塔「Java项目」独立启动时请依赖即将打入 JAR 的 application.properties）${NC}"
 
@@ -2918,12 +3042,10 @@ verify_domain() {
     echo -e "${YELLOW}正在验证域名解析: $domain${NC}"
     
     # 优先获取 IPv4 公网 IP
-    local public_ip=$(curl -s -4 ifconfig.me)
-    if [ -z "$public_ip" ]; then
-        public_ip=$(curl -s ifconfig.me)
-    fi
+    local public_ip
+    public_ip=$(_xxgkami_get_public_ip)
 
-    if [ -z "$public_ip" ]; then
+    if [ -z "$public_ip" ] || [ "$public_ip" = "127.0.0.1" ]; then
         echo -e "${YELLOW}无法获取服务器公网 IP，跳过自动验证${NC}"
         return 0
     fi
@@ -2990,16 +3112,25 @@ elif [ -t 0 ]; then
 fi
 
 if [ "$BIND_DOMAIN_CHOICE" == "y" ] || [ "$BIND_DOMAIN_CHOICE" == "Y" ]; then
-    # 1. 获取服务器公网 IP (优先 IPv4)
-    PUBLIC_IP=$(curl -s -4 ifconfig.me)
-    if [ -z "$PUBLIC_IP" ]; then
-        PUBLIC_IP=$(curl -s ifconfig.me)
+    # 自动模式且未提供域名变量时退回 IP 部署，避免无人值守 read 空转
+    if [ "$XXGKAMI_AUTO_MODE" = "true" ] && [ -z "${XXGKAMI_AUTO_DOMAIN:-}" ] && [ ! -t 0 ]; then
+        echo -e "${YELLOW}[自动模式] 未设置 XXGKAMI_AUTO_DOMAIN，回退为服务器 IP 部署。${NC}"
+        BIND_DOMAIN_CHOICE="n"
     fi
+fi
+
+if [ "$BIND_DOMAIN_CHOICE" == "y" ] || [ "$BIND_DOMAIN_CHOICE" == "Y" ]; then
+    # 1. 获取服务器公网 IP (优先 IPv4)
+    PUBLIC_IP=$(_xxgkami_get_public_ip)
     echo -e "${GREEN}检测到服务器公网 IP: ${PUBLIC_IP}${NC}"
     
     # 2. 输入域名
     while true; do
-        read -p "请输入您要绑定的域名 (例如: example.com): " USER_DOMAIN
+        if [ "$XXGKAMI_AUTO_MODE" = "true" ]; then
+            USER_DOMAIN="${XXGKAMI_AUTO_DOMAIN:-}"
+        else
+            read -p "请输入您要绑定的域名 (例如: example.com): " USER_DOMAIN
+        fi
         
         # 自动去除 http://, https://, 和尾部 /
         USER_DOMAIN=$(echo "$USER_DOMAIN" | sed 's|http://||g' | sed 's|https://||g' | sed 's|/$||g')
@@ -3180,12 +3311,9 @@ else
     echo -e "${YELLOW}未绑定域名，正在配置默认 IP 访问...${NC}"
     
     # 1. 获取服务器公网 IP (优先 IPv4)
-    PUBLIC_IP=$(curl -s -4 ifconfig.me)
-    if [ -z "$PUBLIC_IP" ]; then
-        PUBLIC_IP=$(curl -s ifconfig.me)
-    fi
+    PUBLIC_IP=$(_xxgkami_get_public_ip)
     
-    if [ -z "$PUBLIC_IP" ]; then
+    if [ -z "$PUBLIC_IP" ] || [ "$PUBLIC_IP" = "127.0.0.1" ]; then
         SERVER_NAME="_"
         echo -e "${YELLOW}无法获取公网 IP，使用默认通配符 '_'${NC}"
     else
@@ -3284,8 +3412,17 @@ EOF
     fi
 fi
 
-# 无域名/IP 部署不申请证书，避免 HTTPS 向导阻塞安装。
-HTTPS_CHOICE="n"
+# 依据最终站点地址刷新 CORS 白名单并重启后端（EnvironmentFile 变更需重启才生效）
+FINAL_CORS="http://localhost:5173"
+if [ -n "${USER_DOMAIN:-}" ]; then
+    FINAL_CORS="http://${USER_DOMAIN},https://${USER_DOMAIN}"
+fi
+if [ -n "${PUBLIC_IP:-}" ] && [ "$PUBLIC_IP" != "127.0.0.1" ] && [ "$PUBLIC_IP" != "_" ]; then
+    FINAL_CORS="${FINAL_CORS},http://${PUBLIC_IP}"
+fi
+_xxgkami_write_env_file "${DB_USER:-root}" "${DB_PASSWORD:-}" "" "$FINAL_CORS"
+systemctl restart xxgkami 2>/dev/null || true
+echo -e "${GREEN}已按最终站点地址刷新 CORS 白名单（${FINAL_CORS}）并重启后端。${NC}"
 
 # 8. 安装管理脚本
 echo -e "${YELLOW}[8/9] 安装 xxgkami 管理命令...${NC}"
@@ -3355,11 +3492,27 @@ _xxgkami_embed_ensure_java_home() {
 
 _xxgkami_embed_refresh_backend_datasource_env() {
     local _du="\$1" _dp="\$2"
+    local _f=/etc/xxgkami/backend-datasource.env
+    local _jwt="" _cors="" _acc="" _ref=""
+    # 保留已有 JWT_SECRET/CORS 等键：直接截断重写会丢失 JWT_SECRET，导致更新后全部用户登录态失效
+    if [ -f "\$_f" ]; then
+        _jwt=\$(grep -m1 '^JWT_SECRET=' "\$_f" 2>/dev/null | cut -d= -f2- | tr -d '\r')
+        _cors=\$(grep -m1 '^CORS_ALLOWED_ORIGINS=' "\$_f" 2>/dev/null | cut -d= -f2- | tr -d '\r')
+        _acc=\$(grep -m1 '^JWT_ACCESS_EXPIRATION_MS=' "\$_f" 2>/dev/null | cut -d= -f2- | tr -d '\r')
+        _ref=\$(grep -m1 '^JWT_REFRESH_EXPIRATION_MS=' "\$_f" 2>/dev/null | cut -d= -f2- | tr -d '\r')
+    fi
     mkdir -p /etc/xxgkami
     chmod 700 /etc/xxgkami 2>/dev/null || true
-    printf \$'SPRING_DATASOURCE_USERNAME=%s\n' "\${_du}" > /etc/xxgkami/backend-datasource.env
-    printf \$'SPRING_DATASOURCE_PASSWORD=%s\n' "\${_dp}" >> /etc/xxgkami/backend-datasource.env
-    chmod 600 /etc/xxgkami/backend-datasource.env
+    local _tmp="\$_f.\$\$"
+    {
+        printf \$'SPRING_DATASOURCE_USERNAME=%s\n' "\${_du}"
+        printf \$'SPRING_DATASOURCE_PASSWORD=%s\n' "\${_dp}"
+        [ -n "\$_jwt" ] && printf \$'JWT_SECRET=%s\n' "\${_jwt}"
+        [ -n "\$_cors" ] && printf \$'CORS_ALLOWED_ORIGINS=%s\n' "\${_cors}"
+        [ -n "\$_acc" ] && printf \$'JWT_ACCESS_EXPIRATION_MS=%s\n' "\${_acc}"
+        [ -n "\$_ref" ] && printf \$'JWT_REFRESH_EXPIRATION_MS=%s\n' "\${_ref}"
+    } > "\$_tmp" && mv -f "\$_tmp" "\$_f"
+    chmod 600 "\$_f"
 }
 
 _xxgkami_embed_find_frontend_dist_dir() {
@@ -3482,10 +3635,10 @@ _xxgkami_embed_pick_seed_sql_path_for_update() {
 
     case "\$_ver_line" in *MariaDB*|*mariadb*)
         echo -e "\${GREEN}[更新][SQL] VERSION()=\${_ver_line} → MariaDB：databaes/kami_mysql56.sql（避免 kami.sql 中 MySQL 8 专属排序规则报错）\${NC}" >&2
-        for p in "\$base/databaes/kami_mysql56.sql" "\$base/database/kami_mysql56.sql"; do
+        for p in "\$base/databaes/kami_mysql56.sql" "\$base/database/kami_mysql56.sql" "\$base/kami_mysql56.sql"; do
             [ -f "\$p" ] && { echo "\$p"; return 0; }
         done
-        for p in "\$base/databaes/kami.sql" "\$base/database/kami.sql"; do
+        for p in "\$base/databaes/kami.sql" "\$base/database/kami.sql" "\$base/kami.sql"; do
             [ -f "\$p" ] && { echo "\$p"; return 0; }
         done
         echo "\$base/databaes/kami_mysql56.sql"
@@ -3497,7 +3650,7 @@ _xxgkami_embed_pick_seed_sql_path_for_update() {
 
     if [ -n "\$_ver_num" ] && awk -v v="\$_ver_num" 'BEGIN {exit !(v >= 8.0)}'; then
         echo -e "\${GREEN}[更新][SQL] VERSION()=\${_ver_line}（\${_ver_num}）→ Oracle MySQL 8+：databaes/kami.sql\${NC}" >&2
-        for p in "\$base/databaes/kami.sql" "\$base/database/kami.sql"; do
+        for p in "\$base/databaes/kami.sql" "\$base/database/kami.sql" "\$base/kami.sql"; do
             [ -f "\$p" ] && { echo "\$p"; return 0; }
         done
         echo "\$base/databaes/kami.sql"
@@ -3506,10 +3659,10 @@ _xxgkami_embed_pick_seed_sql_path_for_update() {
 
     if [ -n "\$_ver_num" ] && awk -v v="\$_ver_num" 'BEGIN {exit !(v >= 5.6 && v < 8.0)}'; then
         echo -e "\${GREEN}[更新][SQL] VERSION()=\${_ver_line}（\${_ver_num}）→ 5.6～8 以下 Oracle MySQL：databaes/kami_mysql56.sql\${NC}" >&2
-        for p in "\$base/databaes/kami_mysql56.sql" "\$base/database/kami_mysql56.sql"; do
+        for p in "\$base/databaes/kami_mysql56.sql" "\$base/database/kami_mysql56.sql" "\$base/kami_mysql56.sql"; do
             [ -f "\$p" ] && { echo "\$p"; return 0; }
         done
-        for p in "\$base/databaes/kami.sql" "\$base/database/kami.sql"; do
+        for p in "\$base/databaes/kami.sql" "\$base/database/kami.sql" "\$base/kami.sql"; do
             [ -f "\$p" ] && { echo "\$p"; return 0; }
         done
         echo "\$base/databaes/kami_mysql56.sql"
@@ -3538,6 +3691,13 @@ _xxgkami_embed_prompt_existing_database_strategy() {
 
     [ "\${k_ex:-0}" -eq 1 ] 2>/dev/null || return 0
     [ "\${t_cn:-0}" -gt 0 ] 2>/dev/null || return 0
+
+    # 非交互终端（无人值守/CI）时默认智能更新（merge），避免 read 空转死循环
+    if [ ! -t 0 ]; then
+        echo -e "\${YELLOW}[自动] 非交互终端：数据库已存在且有表，默认选择智能更新（merge）。\${NC}"
+        XXGKAMI_DB_ACTION=merge
+        return 0
+    fi
 
     while true; do
         echo ""
@@ -3757,7 +3917,7 @@ while true; do
             cd "\$INSTALL_DIR/backend" || { echo -e "\${RED}后端目录不存在\${NC}"; continue; }
             _xxgkami_embed_bake_jdbc_before_mvn "\$DB_USER" "\$DB_PWD" || { echo -e "\${RED}bake JDBC 写入 application.properties 失败\${NC}"; continue; }
             _xxgkami_embed_ensure_java_home || { echo -e "\${RED}[Java] JAVA_HOME/Maven 需要完整 JDK ，请排查后重试更新\${NC}"; continue; }
-            mvn clean package -DskipTests
+            mvn clean package -DskipTests || { echo -e "\${RED}[更新] Maven 打包失败，已停止本次更新。\${NC}"; continue; }
             _J=\$(find target -maxdepth 1 -type f -name "backend-*.jar" ! -name "*-plain.jar" ! -name "*-sources.jar" ! -name "*-javadoc.jar" 2>/dev/null | head -n 1)
             [ -z "\$_J" ] && _J=\$(find target -maxdepth 1 -type f -name "backend-*.jar" ! -name "*-sources.jar" 2>/dev/null | head -n 1)
             if [ -z "\$_J" ]; then
@@ -3786,19 +3946,19 @@ while true; do
             fi
             if [ "\$IS_CHINA" = true ]; then
                 npm config set registry https://registry.npmmirror.com/
-                npm install
+                npm install || { echo -e "\${RED}[更新] npm install 失败，已停止本次更新。\${NC}"; continue; }
             else
                 npm config set registry https://registry.npmjs.org/
-                npm install
+                npm install || { echo -e "\${RED}[更新] npm install 失败，已停止本次更新。\${NC}"; continue; }
             fi
             if [ "\$DEPLOY_ENV" = "dev" ]; then
                 if grep -q "build:dev" package.json; then
-                    npm run build:dev
+                    npm run build:dev || { echo -e "\${RED}[更新] 前端构建失败，已停止本次更新。\${NC}"; continue; }
                 else
-                    npm run build
+                    npm run build || { echo -e "\${RED}[更新] 前端构建失败，已停止本次更新。\${NC}"; continue; }
                 fi
             else
-                npm run build
+                npm run build || { echo -e "\${RED}[更新] 前端构建失败，已停止本次更新。\${NC}"; continue; }
             fi
             _xxgkami_embed_sync_frontend_to_webroot "\$INSTALL_DIR" "\$WEB_ROOT" || { echo -e "\${RED}前端同步失败\${NC}"; continue; }
             echo -e "\${YELLOW}正在修复前端文件权限 (\$WEB_ROOT) ...\${NC}"
@@ -3856,7 +4016,7 @@ while true; do
                 
                 echo -e "\${YELLOW}删除文件...\${NC}"
                 rm -rf \$INSTALL_DIR
-                rm -rf "\$WEB_ROOT"/*
+                rm -rf "\$WEB_ROOT"/* 2>/dev/null || true
                 rm -f /etc/nginx/conf.d/xxgkami.conf /etc/nginx/conf.d/xxgkami-domain.conf
                 systemctl reload nginx
                 
@@ -3953,16 +4113,16 @@ check_and_start_service() {
 check_and_start_service "nginx" "Nginx Web服务器"
 
 # 检查 MySQL
-if systemctl list-unit-files | grep -q mysqld.service; then
+if systemctl list-unit-files | grep -qE '^mysqld\.service'; then
     check_and_start_service "mysqld" "MySQL 数据库"
 else
     check_and_start_service "mysql" "MySQL 数据库"
 fi
 
 # 检查 Redis
-if systemctl list-unit-files | grep -q redis.service; then
+if systemctl list-unit-files | grep -qE '^redis\.service'; then
     check_and_start_service "redis" "Redis 缓存服务"
-elif systemctl list-unit-files | grep -q redis-server.service; then
+elif systemctl list-unit-files | grep -qE '^redis-server\.service'; then
     check_and_start_service "redis-server" "Redis 缓存服务"
 fi
 
@@ -3973,7 +4133,7 @@ echo -e "${BLUE}================================================${NC}"
 echo -e "${GREEN}      部署流程结束      ${NC}"
 echo -e "${BLUE}================================================${NC}"
 # 构建访问地址
-CURRENT_IP=$(curl -s -4 --connect-timeout 3 ifconfig.me 2>/dev/null || curl -s --connect-timeout 3 ifconfig.me 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo 127.0.0.1)
+CURRENT_IP=$(_xxgkami_get_public_ip)
 if [ -n "$USER_DOMAIN" ]; then
     PROTOCOL="http"
     if [ "$HTTPS_CHOICE" == "y" ] || [ "$HTTPS_CHOICE" == "Y" ]; then

@@ -46,11 +46,7 @@ public class OAuthService {
         if (appid != null) appid = appid.trim();
         if (appkey != null) appkey = appkey.trim();
         if (callbackDomain != null) callbackDomain = callbackDomain.trim();
-        
-        System.out.println("DEBUG: Settings - oauth_url: " + oauthUrl);
-        System.out.println("DEBUG: Settings - oauth_appid: " + appid);
-        System.out.println("DEBUG: Settings - oauth_callback_domain (DB): " + callbackDomain);
-        
+
         if (oauthUrl == null || oauthUrl.isEmpty()) oauthUrl = "https://baoxian18.com";
         // Remove trailing slash from oauthUrl to avoid double slashes
         if (oauthUrl.endsWith("/")) oauthUrl = oauthUrl.substring(0, oauthUrl.length() - 1);
@@ -58,54 +54,18 @@ public class OAuthService {
         if (callbackDomain == null || callbackDomain.isEmpty()) {
              callbackDomain = settingsService.getSetting("site_url");
              if (callbackDomain != null) callbackDomain = callbackDomain.trim();
-             System.out.println("DEBUG: Settings - site_url (Fallback): " + callbackDomain);
              if (callbackDomain == null || callbackDomain.isEmpty()) callbackDomain = "http://localhost:5173";
         }
         if (callbackDomain.endsWith("/")) callbackDomain = callbackDomain.substring(0, callbackDomain.length() - 1);
         
         // Ensure callbackDomain has protocol
         if (!callbackDomain.startsWith("http://") && !callbackDomain.startsWith("https://")) {
-            // Default to http if no protocol is specified, but allow https if already present
-            // In a real scenario, we might want to detect or configure this better.
-            // For now, if the user input "example.com", we prepend "http://".
-            // If they want https, they should input "https://example.com" or we can default to https if preferred.
-            // Given the user request "support http and https", it implies we should not force http if not needed,
-            // or perhaps dynamically detect? But we are generating a URL for an external service to call back.
-            // The safest bet for modern web is usually https, but local dev is http.
-            // Let's assume if no protocol, we prepend http:// as a safe default for IP/localhost,
-            // BUT if it looks like a domain, maybe https?
-            // Actually, the previous fix forced "http://".
-            // If the user wants https, they should enter it in the settings.
-            // But if they just entered "baoxian18.com", we forced "http://".
-            // The user says "support http and https".
-            // This likely means: Don't just blindly add "http://".
-            // If the string starts with nothing, we still need a protocol for a valid URL.
-            // Let's check if it looks like a domain that typically uses https?
-            // Or better, just default to http:// if missing, as users who need https usually type it.
-            // Wait, the issue might be that I hardcoded "http://" in the previous step.
-            // The code `if (!callbackDomain.startsWith("http://") && !callbackDomain.startsWith("https://"))`
-            // correctly checks BOTH.
-            // So if the user enters "https://...", it skips the block.
-            // If they enter "example.com", it enters the block and adds "http://".
-            // This logic seems sound for "supporting both" by respecting user input, but providing a default.
-            // UNLESS the user implies we should auto-detect or allow relative protocol `//`?
-            // `//` is not valid for backend redirect construction usually.
-            
-            // Let's assume the user means "don't break if I entered https".
-            // My previous code:
-            // if (!startsWith("http://") && !startsWith("https://")) { callbackDomain = "http://" + ... }
-            // This ALREADY supports https if the user typed it.
-            
-            // Maybe the user wants us to *prefer* https or handle cases where `http` was hardcoded elsewhere?
-            // Let's look at `OAuthController.java` as well.
-            
+            // Default to http if no protocol is specified; users needing https should configure it explicitly.
             callbackDomain = "http://" + callbackDomain;
         }
-        
-        System.out.println("DEBUG: Final Callback Domain: " + callbackDomain);
 
+        // 后端 context-path 固定为 /api，故外部回调地址必须带 /api 前缀
         String callbackUrl = callbackDomain + "/api/oauth/callback";
-        System.out.println("DEBUG: Generated Callback URL: " + callbackUrl);
 
         // Generate state to match PHP SDK behavior
         String state = UUID.randomUUID().toString().replace("-", "");
@@ -130,7 +90,6 @@ public class OAuthService {
             }
 
             String requestUrlStr = oauthUrl + "/connect.php?" + queryString.toString();
-            System.out.println("DEBUG: Full OAuth Request URL: " + requestUrlStr);
 
             HttpHeaders headers = new HttpHeaders();
             headers.set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
@@ -142,9 +101,6 @@ public class OAuthService {
 
             ResponseEntity<String> responseEntity = restTemplate.exchange(uri, HttpMethod.GET, entity, String.class);
             String response = responseEntity.getBody();
-            
-            System.out.println("OAuth Request URL: " + requestUrlStr);
-            System.out.println("OAuth Response: " + response);
 
             if (response == null || response.isEmpty()) {
                 throw new RuntimeException("Empty response from OAuth provider");
@@ -155,11 +111,9 @@ public class OAuthService {
             if (data.containsKey("code") && (Integer)data.get("code") == 0) {
                 return (String) data.get("url");
             } else {
-                throw new RuntimeException("Failed to get login URL: " + data.get("msg") + 
-                    " [DEBUG: callbackUrl=" + callbackUrl + ", requestUrl=" + requestUrlStr + "]");
+                throw new RuntimeException("Failed to get login URL: " + data.get("msg"));
             }
         } catch (Exception e) {
-            e.printStackTrace();
             throw new RuntimeException("OAuth Error: " + e.getMessage());
         }
     }
@@ -235,17 +189,13 @@ public class OAuthService {
                 
                 // Implementation:
                 // We can cache the social info in a temporary token (JWT) with a short expiration and scope "register".
-                
-                String registerToken = jwtUtil.generateToken(socialUid, "register"); // Use socialUid as subject
-                // We might need to store type/nickname/faceimg too.
-                // JWT claims are good for this.
-                
+
                 Map<String, Object> claims = new HashMap<>();
+                claims.put("type", "register");
                 claims.put("socialUid", socialUid);
                 claims.put("socialType", type);
                 claims.put("nickname", nickname);
-                // claims.put("faceimg", faceimg);
-                
+
                 String tempToken = jwtUtil.generateCustomToken(claims, "register", 600); // 10 mins
                 
                 Map<String, Object> result = new HashMap<>();

@@ -97,6 +97,9 @@ public class UserMapper {
      * 删除用户
      */
     public void deleteUser(Long id) {
+        // 先清理关联数据，避免 user_api_keys / social_users 残留孤儿行
+        jdbcTemplate.update("DELETE FROM user_api_keys WHERE user_id = ?", id);
+        jdbcTemplate.update("DELETE FROM social_users WHERE user_id = ?", id);
         String sql = "DELETE FROM users WHERE id = ?";
         jdbcTemplate.update(sql, id);
     }

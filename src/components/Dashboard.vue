@@ -112,7 +112,6 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
-import { mockAdmins, mockUsers, mockCards, mockApiKeys, mockSettings, mockSlides, mockFeatures, mockDeleteKey } from '../data/mockData.js'
 import { cardApi, statsApi } from '../services/api.js'
 import { ElMessage } from 'element-plus'
 import NavigationBar from './NavigationBar.vue'
@@ -164,16 +163,6 @@ const createProgress = reactive({
   done: false,
   percent: 0
 })
-
-// 创建模拟数据对象
-const mockData = {
-  users: mockUsers,
-  admins: mockAdmins,
-  keys: mockCards,
-  apiKeys: mockApiKeys,
-  carouselData: mockSlides,
-  features: mockFeatures
-}
 
 // 方法
 const handleLogout = () => {
@@ -413,18 +402,17 @@ const handleCreateBackup = () => {
 
 // 初始化数据
 onMounted(async () => {
-  // 加载模拟数据
-  carouselData.value = mockData.carouselData
-  features.value = mockData.features
-  apiKeys.value = mockData.apiKeys
-  
+  // 轮播与功能一览不再使用 mock 数据；如后续接入后端 slides/features 接口，可在此加载
+
   // 异步加载卡密数据
   await loadKeys()
   
-  // 自动轮播
-  setInterval(() => {
-    nextSlide()
-  }, 5000)
+  // 自动轮播（无数据时跳过）
+  if (carouselData.value.length > 0) {
+    setInterval(() => {
+      nextSlide()
+    }, 5000)
+  }
 })
 </script>
 

@@ -188,7 +188,8 @@ public class PaymentService {
         }
 
         if ("TRADE_SUCCESS".equals(status)) {
-            orderService.completeOrder(orderNo);
+            // 原子完成：内部先 pending→processing，防止并发回调重复发卡
+            orderService.completeOrderSafely(orderNo);
         }
 
         return "success";

@@ -1219,10 +1219,11 @@ public class CardService {
     }
 
     /**
-     * 公开页：解绑当前卡密上的设备码与设备 ID（须已绑定机器码）。同步清理 api_key_machine_spec_redemption。
+     * 公开页：解绑当前卡密上的设备码与设备 ID（须已绑定机器码，且必须提交与当前绑定一致的机器码，
+     * 防止任何拿到卡密的人解绑他人设备）。同步清理 api_key_machine_spec_redemption。
      */
     @Transactional
-    public void publicUnbindMachine(String rawInput) {
+    public void publicUnbindMachine(String rawInput, String machineCode) {
         Card card = resolveCardForPublicMachineOps(rawInput);
         if (card == null) {
             throw new RuntimeException("未找到该卡密");
@@ -1237,10 +1238,14 @@ public class CardService {
         if (mc == null || mc.isBlank()) {
             throw new RuntimeException("该卡密未绑定设备，无法解绑");
         }
+        if (machineCode == null || machineCode.isBlank()) {
+            throw new RuntimeException("请提供当前绑定的机器码");
+        }
+        if (!mc.equals(machineCode)) {
+            throw new RuntimeException("机器码校验失败，无法解绑");
+        }
         Long apiKeyId = card.getApiKeyId();
-        card.setMachineCode(null);
-        card.setDeviceId(null);
-        cardMapper.update(card);
+        cardMapper.clearMachineBinding(card.getId());
         if (apiKeyId != null) {
             apiKeyMachineSpecRedemptionMapper.deleteByApiKeyAndMachine(apiKeyId, mc);
         }

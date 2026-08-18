@@ -184,6 +184,7 @@ const handleCommand = (command) => {
 
 const openAdminModal = () => {
   adminForm.username = props.userInfo.username
+  adminForm.email = props.userInfo.email || ''
   adminForm.password = ''
   showAdminModal.value = true
 }

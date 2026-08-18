@@ -351,7 +351,6 @@
 <script setup>
 import { ref, reactive, watch, onMounted } from 'vue'
 import { authApi, settingsApi } from '../services/api.js'
-import { mockLogin } from '../data/mockData.js'
 
 const props = defineProps({
   initialUserType: {

@@ -78,6 +78,9 @@ public class ApiKeyMapper {
                     "assign_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
                     "UNIQUE(user_id, api_key_id)" +
                     ")");
+            // 清理历史孤儿行（用户/密钥已删除但分配记录仍在），否则会阻塞自动分配与判重逻辑
+            jdbcTemplate.execute("DELETE uak FROM user_api_keys uak LEFT JOIN users u ON u.id = uak.user_id WHERE u.id IS NULL");
+            jdbcTemplate.execute("DELETE uak FROM user_api_keys uak LEFT JOIN api_keys k ON k.id = uak.api_key_id WHERE k.id IS NULL");
         } catch (Exception e) {
             logger.error("Failed to create user_api_keys table", e);
         }
@@ -215,8 +218,15 @@ public class ApiKeyMapper {
     }
 
     public void assignUser(Long apiKeyId, Long userId) {
-        String sql = "INSERT INTO user_api_keys (user_id, api_key_id) VALUES (?, ?)";
+        // INSERT IGNORE：与唯一键配合，避免并发/重复分配触发 DuplicateKeyException
+        String sql = "INSERT IGNORE INTO user_api_keys (user_id, api_key_id) VALUES (?, ?)";
         jdbcTemplate.update(sql, userId, apiKeyId);
+    }
+
+    public boolean existsAssignment(Long apiKeyId, Long userId) {
+        String sql = "SELECT COUNT(*) FROM user_api_keys WHERE user_id = ? AND api_key_id = ?";
+        Integer count = jdbcTemplate.queryForObject(sql, Integer.class, userId, apiKeyId);
+        return count != null && count > 0;
     }
 
     public void unassignUser(Long apiKeyId, Long userId) {

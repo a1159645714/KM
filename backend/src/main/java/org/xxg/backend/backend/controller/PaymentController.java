@@ -3,10 +3,14 @@ package org.xxg.backend.backend.controller;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 import org.xxg.backend.backend.entity.Order;
+import org.xxg.backend.backend.entity.User;
 import org.xxg.backend.backend.service.OrderService;
 import org.xxg.backend.backend.service.PaymentService;
+import org.xxg.backend.backend.service.UserService;
 
 import org.xxg.backend.backend.service.SettingsService;
 
@@ -22,31 +26,47 @@ public class PaymentController {
     private final PaymentService paymentService;
     private final OrderService orderService;
     private final SettingsService settingsService;
+    private final UserService userService;
 
-    public PaymentController(PaymentService paymentService, OrderService orderService, SettingsService settingsService) {
+    public PaymentController(PaymentService paymentService, OrderService orderService,
+                             SettingsService settingsService, UserService userService) {
         this.paymentService = paymentService;
         this.orderService = orderService;
         this.settingsService = settingsService;
+        this.userService = userService;
     }
 
     @PostMapping("/pay")
     public ResponseEntity<Map<String, Object>> pay(@RequestBody Map<String, String> payload) {
         String orderNo = payload.get("orderNo");
         String paymentType = payload.get("paymentMethod"); // alipay, wxpay, etc.
-        
-        if (orderNo == null || paymentType == null) {
+
+        if (orderNo == null || orderNo.isBlank() || paymentType == null || paymentType.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("success", false, "message", "缺少参数"));
         }
-        
+
+        // 鉴权：未登录一律拒绝
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getName())) {
+            return ResponseEntity.status(401).body(Map.of("success", false, "message", "未登录"));
+        }
+
         // Find order by orderNo
-        // OrderService doesn't have findByOrderNo exposed publicly, let's assume we can get it or add it.
-        // For now, let's iterate or add method. Adding method is better.
         Order order = orderService.getOrderByNo(orderNo);
-        
+
         if (order == null) {
             return ResponseEntity.badRequest().body(Map.of("success", false, "message", "订单不存在"));
         }
-        
+
+        // 归属校验：管理员可操作任意订单，普通用户只能支付自己的订单
+        boolean admin = auth.getAuthorities().stream().anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+        if (!admin) {
+            User currentUser = userService.getUserByUsername(auth.getName());
+            if (currentUser == null || !order.getUserId().equals(currentUser.getId().intValue())) {
+                return ResponseEntity.status(403).body(Map.of("success", false, "message", "无权操作该订单"));
+            }
+        }
+
         try {
             String payUrl = paymentService.createPaymentUrl(order, paymentType);
             return ResponseEntity.ok(Map.of("success", true, "payUrl", payUrl));
@@ -55,11 +75,14 @@ public class PaymentController {
         }
     }
 
-    @GetMapping("/notify")
+    /**
+     * 支付平台服务端通知：多数平台使用 POST（部分使用 GET），统一兼容。
+     */
+    @RequestMapping(value = "/notify", method = {RequestMethod.GET, RequestMethod.POST})
     public String notify(HttpServletRequest request) {
         Map<String, String> params = new HashMap<>();
         request.getParameterMap().forEach((k, v) -> params.put(k, v[0]));
-        
+
         try {
             return paymentService.handleNotify(params);
         } catch (Exception e) {

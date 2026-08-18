@@ -179,6 +179,40 @@ public class OrderService {
             completeOrder(order);
         }
     }
+
+    /**
+     * 支付回调专用：原子推进订单状态，避免并发回调重复发卡。
+     * 流程：pending → processing（原子）→ 生成卡密 → completed（原子）。
+     * 若状态已不是 pending（已处理/已取消/已发货），直接返回，不重复发卡。
+     */
+    @Transactional
+    public void completeOrderSafely(String orderNo) {
+        if (orderMapper.markProcessingIfPending(orderNo) == 0) {
+            return; // 已被其他回调处理或订单不在待支付状态
+        }
+
+        Order order = orderMapper.findByOrderNo(orderNo);
+        if (order == null) {
+            return;
+        }
+
+        int duration = 0;
+        int totalCount = 0;
+        int specValue = parseSpecValue(order.getCardSpec());
+        if ("time".equals(order.getCardType())) duration = specValue;
+        else totalCount = specValue;
+
+        String creatorType = "user";
+        Long creatorId = order.getUserId() != null ? Long.valueOf(order.getUserId()) : 1L;
+        String creatorName = order.getUsername();
+
+        List<Card> cards = cardService.createCards(order.getQuantity(), order.getCardType(), duration, totalCount,
+                "web", "advanced", 1,
+                creatorType, creatorId, creatorName, null);
+
+        String cardKeys = cards.stream().map(Card::getCardKey).collect(Collectors.joining(","));
+        orderMapper.completeOrder(orderNo, cardKeys, LocalDateTime.now());
+    }
     
     public List<Order> getUserOrders(Integer userId) {
         return orderMapper.findByUserId(userId);

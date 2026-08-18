@@ -112,10 +112,10 @@ public class CardMapper {
     }
 
     /**
-     * 统计有效卡密数量
+     * 统计有效卡密数量（未使用 0 + 使用中 1；暂停 2 / 已合并 4 不计入）
      */
     public int countActiveCards() {
-        String sql = "SELECT COUNT(*) FROM cards WHERE status = 0";
+        String sql = "SELECT COUNT(*) FROM cards WHERE status IN (0, 1)";
         Integer count = jdbcTemplate.queryForObject(sql, Integer.class);
         return count != null ? count : 0;
     }
@@ -185,6 +185,16 @@ public class CardMapper {
         String sql = "UPDATE cards SET status = ?, use_time = ?, remaining_count = ?, expire_time = ?, machine_code = ? WHERE encrypted_key = ?";
         jdbcTemplate.update(sql, status, Timestamp.valueOf(useTime), remainingCount,
                 expireTime != null ? Timestamp.valueOf(expireTime) : null, machineCode, cardHash);
+    }
+
+    /**
+     * 仅清空机器码与设备绑定（供自助解绑使用）。
+     * 与 update(card) 不同：绝不触碰 status/use_time/expire_time/remaining_count/ip_address 等字段，
+     * 避免用不完整对象覆盖整行数据。
+     */
+    public void clearMachineBinding(Long id) {
+        String sql = "UPDATE cards SET machine_code = NULL, device_id = NULL WHERE id = ?";
+        jdbcTemplate.update(sql, id);
     }
 
     /**

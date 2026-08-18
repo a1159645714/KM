@@ -47,10 +47,9 @@ function notifyAuthExpired(message = 'Current login expired, please sign in agai
   })
 }
 
-// API閺堝秴濮熼柊宥囩枂
-// 娴兼ê鍘涙担璺ㄦ暏閻滎垰顣ㄩ崣姗€鍣烘稉顓犳畱闁板秶鐤嗛敍灞筋洤閺嬫粍鐥呴張澶婂灟閺嶈宓侀悳顖氼暔閼奉亜濮╅崚銈嗘焽
-// 瀵偓閸欐垹骞嗘晶鍐у▏閻?http://localhost:8080/api
-// 閻㈢喍楠囬悳顖氼暔娴ｈ法鏁?/api (闁俺绻僋ginx閸欏秴鎮滄禒锝囨倞)
+// API 基础配置
+// 开发环境默认通过 Vite 代理到 http://localhost:8080/api
+// 生产环境使用相对路径 /api（由 Nginx 反向代理到后端）
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 let isRefreshing = false;
 let failedQueue = [];
@@ -67,7 +66,7 @@ const processQueue = (error, token = null) => {
 };
 
 /**
- * 闁氨鏁ら惃鍑橮I鐠囬攱鐪伴崙鑺ユ殶
+ * 通用 API 请求封装（带 401 自动刷新重试）
  */
 async function apiRequest(endpoint, options = {}) {
   const url = `${API_BASE_URL}${endpoint}`;
@@ -186,10 +185,12 @@ async function apiRequest(endpoint, options = {}) {
 }
 
 /**
- * 鐠併倛鐦堿PI閺堝秴濮? */
+ * 认证 API 封装
+ */
 export const authApi = {
   /**
-   * 缁狅紕鎮婇崨妯兼瑜?   */
+   * 管理员登录
+   */
   async loginAdmin(username, password, totpCode) {
     return await apiRequest('/auth/admin/login', {
       method: 'POST',
@@ -198,7 +199,7 @@ export const authApi = {
   },
 
   /**
-   * 閻劍鍩涢惂璇茬秿
+   * 用户登录
    */
   async loginUser(username, password) {
     return await apiRequest('/auth/user/login', {
@@ -208,7 +209,8 @@ export const authApi = {
   },
 
   /**
-   * 閸欐垿鈧線鍋栫粻閬嶇崣鐠囦胶鐖?   */
+   * 发送邮箱验证码
+   */
   async sendEmailCode(email, type = 'register') {
     return await apiRequest('/auth/email-code', {
       method: 'POST',
@@ -217,7 +219,7 @@ export const authApi = {
   },
 
   /**
-   * 閻劍鍩涘▔銊ュ斀
+   * 用户注册
    */
   async register(data) {
     return await apiRequest('/auth/register', {
@@ -227,7 +229,7 @@ export const authApi = {
   },
 
   /**
-   * 缂佹垵鐣惧▔銊ュ斀
+   * 第三方登录后注册绑定
    */
   async registerBind(data) {
     return await apiRequest('/auth/register-bind', {
@@ -251,14 +253,14 @@ export const authApi = {
   },
 
   /**
-   * 閼惧嘲褰囪ぐ鎾冲閻劍鍩涙穱鈩冧紖
+   * 获取当前登录用户信息
    */
   async getUserInfo() {
     return await apiRequest('/auth/user/info');
   },
 
   /**
-   * 閼惧嘲褰嘥OTP闁板秶鐤嗘穱鈩冧紖
+   * 设置 TOTP 二次验证
    */
   async setupTotp(id) {
     return await apiRequest('/auth/totp/setup', {
@@ -333,7 +335,8 @@ export const authApi = {
 };
 
 /**
- * 鐠佸墽鐤咥PI閺堝秴濮? */
+ * 系统设置 API 封装
+ */
 export const settingsApi = {
   async getSettings() {
     return await apiRequest('/settings/all');
@@ -368,7 +371,8 @@ export const settingsApi = {
 };
 
 /**
- * 缂佸瓨濮PI閺堝秴濮? */
+ * 维护模式 API 封装
+ */
 export const maintenanceApi = {
   async getStatus() {
     return await apiRequest('/maintenance/status');
@@ -399,7 +403,8 @@ export const maintenanceApi = {
 };
 
 /**
- * 婢跺洣鍞PI閺堝秴濮? */
+ * 数据库备份 API 封装
+ */
 export const backupApi = {
   async createBackup() {
     return await apiRequest('/backup/create', {
@@ -409,7 +414,8 @@ export const backupApi = {
 };
 
 /**
- * 缁崵绮洪惄鎴炲付API閺堝秴濮? */
+ * 系统监控 API 封装
+ */
 export const monitorApi = {
   async getSystemMetrics() {
     return await apiRequest('/monitor/system');
@@ -453,12 +459,9 @@ export const monitorApi = {
 };
 
 /**
- * 缂佺喕顓窤PI閺堝秴濮? */
+ * 统计 API 封装
+ */
 export const statsApi = {
-  async getStats() {
-    return await apiRequest('/stats');
-  },
-
   async getDashboardStats() {
     const response = await apiRequest('/stats/dashboard')
     return response?.data || response || {}
@@ -474,7 +477,8 @@ export const statsApi = {
 };
 
 /**
- * 閸︺劎鍤庨悽銊﹀煕API閺堝秴濮? */
+ * 在线用户 API 封装
+ */
 export const onlineApi = {
   async getOnlineUserList() {
     return await apiRequest('/online/list');
@@ -482,7 +486,8 @@ export const onlineApi = {
 };
 
 /**
- * 閻劍鍩涚粻锛勬倞API閺堝秴濮? */
+ * 用户管理 API 封装
+ */
 export const userApi = {
   async getUsers(page = 1, size = 10, keyword = '') {
     const queryParams = new URLSearchParams({
@@ -525,22 +530,12 @@ export const userApi = {
     return await apiRequest(`/admin/users/${id}`, {
       method: 'DELETE'
     });
-  },
-
-  async updateUserPassword(id, newPassword) {
-    return await apiRequest(`/admin/users/${id}/password`, {
-      method: 'PUT',
-      body: JSON.stringify({ newPassword })
-    });
-  },
-
-  async getUserById(id) {
-    return await apiRequest(`/admin/users/${id}`);
   }
 };
 
 /**
- * 閸椻€崇槕API閺堝秴濮? */
+ * 卡密 API 封装
+ */
 export const cardApi = {
   async generateCards(data) {
     return await apiRequest('/cards/admin/create', {
@@ -616,7 +611,7 @@ export const cardApi = {
       headers: token ? { 'Authorization': `Bearer ${token}` } : {}
     });
     if (!response.ok) {
-      throw new Error('鐎电厧鍤径杈Е');
+      throw new Error('导出卡密失败');
     }
     return await response.blob();
   },
@@ -675,23 +670,23 @@ export const cardApi = {
     })
   },
 
-  async publicMachineBindQuery(key) {
-    return await apiRequest('/machine-bind/query', {
+  async publicMachineBindQuery(cardKey) {
+    return await apiRequest('/public/cards/machine-bind/query', {
       method: 'POST',
-      body: JSON.stringify({ key })
+      body: JSON.stringify({ card_key: cardKey })
     })
   },
 
-  async publicMachineUnbind(key) {
-    return await apiRequest('/machine-bind/unbind', {
+  async publicMachineUnbind(cardKey, machineCode) {
+    return await apiRequest('/public/cards/machine-bind/unbind', {
       method: 'POST',
-      body: JSON.stringify({ key })
+      body: JSON.stringify({ card_key: cardKey, machine_code: machineCode })
     })
   }
 };
 
 /**
- * API鐎靛棝鎸滈張宥呭
+ * API 密钥管理
  */
 export const apiKeyApi = {
   async getApiKeys() {
@@ -747,7 +742,8 @@ export const apiKeyApi = {
 };
 
 /**
- * 鐠併垹宕烝PI閺堝秴濮? */
+ * 卡密定价 API 封装
+ */
 export const pricingApi = {
   async getAllPricing() {
     const response = await apiRequest('/pricing')
@@ -812,12 +808,13 @@ export const orderApi = {
 };
 
 /**
- * 閺€顖欑帛API閺堝秴濮? */
+ * 支付 API 封装
+ */
 export const paymentApi = {
-  async createPayment(orderNo, paymentType) {
-    return await apiRequest('/payment/create', {
+  async createPayment(orderNo, paymentMethod) {
+    return await apiRequest('/payment/pay', {
       method: 'POST',
-      body: JSON.stringify({ orderNo, paymentType })
+      body: JSON.stringify({ orderNo, paymentMethod })
     });
   }
 };
@@ -830,12 +827,13 @@ export const oauthApi = {
   },
 
   async handleCallback(type, code) {
-    return await apiRequest(`/oauth/callback/${type}?code=${encodeURIComponent(code)}`);
+    return await apiRequest(`/oauth/callback?type=${encodeURIComponent(type)}&code=${encodeURIComponent(code)}`);
   }
 };
 
 /**
- * 閻劍鍩涙稉顏冩眽鐠у嫭鏋PI閺堝秴濮? */
+ * 用户资料 API 封装
+ */
 export const userProfileApi = {
   async getProfile() {
     return await apiRequest('/user/profile');
