@@ -2638,21 +2638,22 @@ if [ -f "$SQL_FILE" ]; then
                 TABLE_EXISTS=$(mysql -u"$DB_USER" -p"$_EFFPW" -N -B -e "SELECT count(*) FROM information_schema.tables WHERE table_schema = '$DB_NAME' AND table_name = '$TABLE';")
                 if [ "$TABLE_EXISTS" -eq 0 ]; then
                     echo -e "${GREEN}新增表 $TABLE ，正在写入…${NC}"
-                    mysqldump -u"$DB_USER" -p"$_EFFPW" "$TEMP_DB" "$TABLE" | mysql -u"$DB_USER" -p"$_EFFPW" "$DB_NAME"
+                    mysqldump -u"$DB_USER" -p"$_EFFPW" "$TEMP_DB" "$TABLE" | mysql -u"$DB_USER" -p"$_EFFPW" "$DB_NAME" || return 1
                 else
-                    mysqldump -u"$DB_USER" -p"$_EFFPW" --no-create-info --insert-ignore --complete-insert "$TEMP_DB" "$TABLE" | mysql -u"$DB_USER" -p"$_EFFPW" "$DB_NAME"
+                    mysqldump -u"$DB_USER" -p"$_EFFPW" --no-create-info --insert-ignore --complete-insert "$TEMP_DB" "$TABLE" | mysql -u"$DB_USER" -p"$_EFFPW" "$DB_NAME" || return 1
                 fi
             done
             echo -e "${GREEN}数据库智能更新完成。${NC}"
         else
             echo -e "${RED}脚本导入临时库失败（${SQL_FILE}）。${NC}"
+            return 1
         fi
         echo -e "${BLUE}清理临时库 $TEMP_DB…${NC}"
         mysql -u"$DB_USER" -p"$_EFFPW" -e "DROP DATABASE $TEMP_DB;" 2>/dev/null || true
     }
 
     if [ "$_DBACT" = "merge" ]; then
-        run_merge_db
+        run_merge_db || { echo -e "${RED}数据库智能更新失败，安装中止。${NC}"; exit 1; }
     elif [ "$_DBACT" = "drop_import" ] || [ "$_DBACT" = "direct" ]; then
         if [ "$_DBACT" = "drop_import" ]; then
             echo -e "${YELLOW}删除原库并重建「${DB_NAME}」…${NC}"
