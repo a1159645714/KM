@@ -1045,8 +1045,9 @@ const newApiKey = reactive({
 const fetchApiKeys = async () => {
   try {
     const data = await apiKeyApi.getAllApiKeys()
+    const keyList = Array.isArray(data) ? data : []
     // Map backend data to frontend model and fetch related data
-    apiKeys.value = await Promise.all(data.map(async key => {
+    apiKeys.value = await Promise.all(keyList.map(async key => {
       let cardCodes = [];
       try {
         // Fetch real cards count
@@ -1076,7 +1077,16 @@ const fetchApiKeys = async () => {
         lastUsed: null, // Not implemented yet
         requestCount: 0, // Not implemented yet
         cardCodes: cardCodes, 
-        webhookConfig: key.webhook_config ? JSON.parse(key.webhook_config) : null,
+        webhookConfig: (() => {
+          if (!key.webhook_config) return null
+          if (typeof key.webhook_config === 'object') return key.webhook_config
+          try {
+            return JSON.parse(key.webhook_config)
+          } catch (e) {
+            console.warn(`Failed to parse webhook config for key ${key.id}`, e)
+            return null
+          }
+        })(),
         assignedUsers: key.assignedUsers || [],
         enableCardEncryption: key.enable_card_encryption || false,
         requireMachineCode: key.require_machine_code || false,
@@ -1092,7 +1102,7 @@ const fetchApiKeys = async () => {
 const fetchUsers = async () => {
   try {
     const data = await apiKeyApi.getAllUsers()
-    allUsers.value = data?.users || data || []
+    allUsers.value = Array.isArray(data) ? data : []
   } catch (error) {
     console.error('Failed to fetch users:', error)
     allUsers.value = []

@@ -681,11 +681,13 @@ export const apiKeyApi = {
   },
 
   async getAllApiKeys() {
-    return await this.getApiKeys()
+    const response = await this.getApiKeys()
+    return response?.data || response || []
   },
 
   async getAllUsers() {
-    return await apiRequest('/admin/users')
+    const response = await apiRequest('/admin/users?page=1&size=1000')
+    return response?.users || response?.data?.users || response?.data || response || []
   },
 
   async createApiKey(data) {
@@ -767,22 +769,24 @@ export const orderApi = {
   },
 
   async getAllOrders(params = {}) {
-    if (params && Object.keys(params).length > 0) {
-      return await this.searchOrders(params)
-    }
-    return await apiRequest('/orders/admin/list');
+    const queryParams = new URLSearchParams()
+    Object.entries(params || {}).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        queryParams.set(key, String(value))
+      }
+    })
+    return await apiRequest(`/orders/admin/all${queryParams.toString() ? `?${queryParams.toString()}` : ''}`)
   },
 
   async searchOrders(params = {}) {
-    const queryParams = new URLSearchParams(params).toString();
-    return await apiRequest(`/orders/admin/search${queryParams ? `?${queryParams}` : ''}`);
+    return await this.getAllOrders(params)
   },
 
   async updateOrderStatus(orderNo, status) {
-    return await apiRequest(`/orders/admin/${orderNo}/status`, {
-      method: 'PUT',
-      body: JSON.stringify({ status })
-    });
+    return await apiRequest('/orders/admin/updateStatus', {
+      method: 'POST',
+      body: JSON.stringify({ orderNo, status })
+    })
   }
 };
 
