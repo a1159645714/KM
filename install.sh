@@ -11,9 +11,10 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # GitHub 下载设置。项目源码和升级脚本始终来自用户自己的仓库。
-GH_PROXY_CN="${GH_PROXY_CN:-}"
+GH_PROXY_CN="${GH_PROXY_CN:-https://ghfast.top}"
 GIT_REPO="${GIT_REPO:-https://github.com/a1159645714/KM.git}"
 GIT_BRANCH="${GIT_BRANCH:-master}"
+XXGKAMI_AUTO_MODE="${XXGKAMI_AUTO_MODE:-true}"
 
 # 项目部署根目录：源码、maven 工作区、后端 JAR（宝塔常见 /www/wwwroot/xxgkami）
 : "${XXGKAMI_DEPLOY_ROOT:=/www/wwwroot/xxgkami}"
@@ -378,15 +379,19 @@ need_node_install() {
 
 _run_nodesource_setup_22() {
     local url="https://deb.nodesource.com/setup_22.x"
-    if [ "$IS_CHINA" = true ]; then
-        echo -e "${YELLOW}Node：正在拉取 NodeSource 安装脚本…${NC}"
-        if curl -fsSL "https://deb.nodesource.com/setup_22.x" -o /tmp/nodesource_setup_22.sh; then
+    if [ "$IS_CHINA" = true ] && [ -n "$GH_PROXY_CN" ]; then
+        echo -e "${YELLOW}Node：尝试经代理拉取 NodeSource 安装脚本…${NC}"
+        if curl -fsSL "${GH_PROXY_CN}/https://deb.nodesource.com/setup_22.x" -o /tmp/nodesource_setup_22.sh; then
             bash /tmp/nodesource_setup_22.sh
             return $?
         fi
-        echo -e "${YELLOW}镜像拉取失败，尝试直连 NodeSource…${NC}"
+        echo -e "${YELLOW}代理拉取失败，尝试直连 NodeSource…${NC}"
     fi
-    curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+    if curl -fsSL "$url" -o /tmp/nodesource_setup_22.sh; then
+        bash /tmp/nodesource_setup_22.sh
+        return $?
+    fi
+    return 1
 }
 
 # 卸载系统包 Nginx（与宝塔自带的 Nginx 冲突，会引发「动态模块无法接管 *.so」）
@@ -1105,19 +1110,24 @@ EOF
 }
 
 install_java20_pkg() {
-    echo -e "${BLUE}安装 JDK（需 ≥20；CentOS/RHEL 上推荐 Adoptium Temurin 21 LTS 或 25 等）…${NC}"
+    echo -e "${BLUE}安装 JDK（需 ≥20；优先使用系统源中的 OpenJDK 21）…${NC}"
     if [ -f /etc/debian_version ]; then
         if [ "$IS_CHINA" = true ]; then
-            echo -e "${YELLOW}国内环境：可先配置阿里云等 APT 镜像；JDK 若走 Temurin 将按需拉取 Adoptium 仓库${NC}"
+            echo -e "${YELLOW}国内环境：优先尝试系统源中的 OpenJDK 21，避免 Adoptium 签名源导致安装失败${NC}"
         fi
+        rm -f /etc/apt/sources.list.d/adoptium.list
+        rm -f /etc/apt/keyrings/adoptium.gpg
         DEBIAN_FRONTEND=noninteractive apt-get update -y
+        if DEBIAN_FRONTEND=noninteractive apt-get install -y openjdk-21-jdk 2>/dev/null; then
+            return 0
+        fi
         if DEBIAN_FRONTEND=noninteractive apt-get install -y openjdk-20-jdk 2>/dev/null; then
             return 0
         fi
-        echo -e "${YELLOW}[Java] openjdk-20-jdk 在当前源中不可用，尝试 Eclipse Temurin（21 LTS / 新版…） …${NC}"
+        echo -e "${YELLOW}[Java] 系统源中未提供可用 JDK，尝试 Eclipse Temurin（21 LTS / 新版…） …${NC}"
         if ! _install_java20_via_temurin_debian; then
             echo -e "${RED}[Java] Eclipse Temurin JDK 安装失败（需 ≥20）。${NC}"
-            echo -e "${YELLOW}请参考: https://adoptium.net/installation/linux （或改用带 OpenJDK 20 的软件源）。${NC}"
+            echo -e "${YELLOW}请参考: https://adoptium.net/installation/linux （或改用带 OpenJDK 21 的软件源）。${NC}"
             return 1
         fi
     elif [ -f /etc/redhat-release ]; then
@@ -1140,6 +1150,8 @@ install_java20_pkg() {
 install_node22_pkg() {
     echo -e "${BLUE}安装 Node.js 22.x…${NC}"
     if [ -f /etc/debian_version ]; then
+        rm -f /etc/apt/sources.list.d/adoptium.list
+        rm -f /etc/apt/keyrings/adoptium.gpg
         DEBIAN_FRONTEND=noninteractive apt-get update -y
         DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl gnupg
         _run_nodesource_setup_22
@@ -2310,6 +2322,36 @@ _xxgkami_baota_unlock_tree() {
     [ -f "$root/.user.ini" ] && chattr -i "$root/.user.ini" 2>/dev/null || true
 }
 
+# GitHub 压缩包回退下载，减少国内/海外网络抖动导致的 git clone 卡死。
+_xxgkami_download_repo_archive() {
+    local target_dir="$1"
+    local tmp_base="/tmp/xxgkami-archive.$$"
+    local tmp_tar="${tmp_base}.tar.gz"
+    local extracted_dir="${tmp_base}-src"
+    local branch_path="refs/heads/${GIT_BRANCH}"
+    local archive_url="https://codeload.github.com/a1159645714/KM/tar.gz/${branch_path}"
+    local proxy_url="${GH_PROXY_CN:+${GH_PROXY_CN}/}${archive_url}"
+
+    rm -rf "$tmp_tar" "$extracted_dir"
+    mkdir -p "$extracted_dir"
+
+    if [ -n "$GH_PROXY_CN" ]; then
+        curl -L --fail --retry 3 --connect-timeout 20 "$proxy_url" -o "$tmp_tar" 2>/dev/null || true
+    fi
+    if [ ! -s "$tmp_tar" ]; then
+        curl -L --fail --retry 3 --connect-timeout 20 "$archive_url" -o "$tmp_tar"
+    fi
+
+    tar -xzf "$tmp_tar" -C "$extracted_dir"
+    local unpacked
+    unpacked="$(find "$extracted_dir" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+    [ -n "$unpacked" ] || return 1
+    rm -rf "$target_dir"
+    mv "$unpacked" "$target_dir"
+    rm -rf "$tmp_tar" "$extracted_dir"
+    return 0
+}
+
 # 腾退安装目录以便重新 git clone（先删，失败则整目录 rename 备份）
 _xxgkami_remove_install_dir_for_reclone() {
     local d="$1"
@@ -2366,10 +2408,13 @@ if [ -d "$INSTALL_DIR" ]; then
             exit 1
         fi
 
-        echo -e "${YELLOW}重新克隆项目...${NC}"
+        echo -e "${YELLOW}重新下载项目...${NC}"
         if ! git clone --branch "$GIT_BRANCH" "$GIT_REPO" "$INSTALL_DIR"; then
-            echo -e "${RED}git clone 失败，请检查网络与仓库地址。${NC}"
-            exit 1
+            echo -e "${YELLOW}git clone 失败，尝试改用 GitHub 压缩包下载...${NC}"
+            if ! _xxgkami_download_repo_archive "$INSTALL_DIR"; then
+                echo -e "${RED}项目下载失败，请检查网络与仓库地址。${NC}"
+                exit 1
+            fi
         fi
         cd "$INSTALL_DIR" || exit 1
         
@@ -2395,8 +2440,11 @@ if [ -d "$INSTALL_DIR" ]; then
     fi
 else
     if ! git clone --branch "$GIT_BRANCH" "$GIT_REPO" "$INSTALL_DIR"; then
-        echo -e "${RED}git clone 失败。若提示目录非空，请在宝塔对 .user.ini 执行 chattr -i 后删除目录再试。${NC}"
-        exit 1
+        echo -e "${YELLOW}git clone 失败，尝试改用 GitHub 压缩包下载...${NC}"
+        if ! _xxgkami_download_repo_archive "$INSTALL_DIR"; then
+            echo -e "${RED}项目下载失败。若提示目录非空，请在宝塔对 .user.ini 执行 chattr -i 后删除目录再试。${NC}"
+            exit 1
+        fi
     fi
     cd "$INSTALL_DIR" || exit 1
 fi
@@ -2411,9 +2459,15 @@ cd "$INSTALL_DIR" || exit 1
 echo -e "${YELLOW}[4/8] 配置数据库...${NC}"
 DB_NAME="kami"
 DB_USER="root"
+DB_PASSWORD="${DB_PASSWORD:-}"
 
 while true; do
-    read -p "请输入 MySQL root 密码: " DB_PASSWORD
+    if [ -n "$DB_PASSWORD" ]; then
+        echo -e "${GREEN}已读取预设的 MySQL root 密码${NC}"
+    else
+        read -r -s -p "请输入 MySQL root 密码: " DB_PASSWORD
+        echo ""
+    fi
 
     echo -e "${YELLOW}正在验证数据库连接（TCP、socket+密码、socket 免密管理员 任一可用即可）…${NC}"
     if _xxgkami_mysql_root_accept_install_password "$DB_PASSWORD"; then
@@ -2429,6 +2483,7 @@ while true; do
     else
         echo -e "${RED}数据库连接失败! 密码错误、无本机 socket 权限或 mysqld 未启动。${NC}"
         echo -e "${YELLOW}Ubuntu/Debian 若仅配置过 auth_socket，可先执行 sudo mysql 确认能进库，再重试本脚本（将用您输入的密码写入 TCP）。${NC}"
+        DB_PASSWORD=""
         read -p "是否重试? (y/n): " RETRY_CHOICE
         if [ "$RETRY_CHOICE" != "y" ] && [ "$RETRY_CHOICE" != "Y" ]; then
             echo -e "${RED}放弃配置数据库，脚本退出。${NC}"
@@ -2542,7 +2597,27 @@ else
     echo -e "${RED}错误：找不到数据库文件 $SQL_FILE${NC}"
 fi
 
+JWT_SECRET="${JWT_SECRET:-$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 48)}"
+ADMIN_PASSWORD="${ADMIN_PASSWORD:-$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 14)}"
+export XXGKAMI_ADMIN_PASSWORD_RAW="$ADMIN_PASSWORD"
+ADMIN_HASH="$(python3 - <<'PY'
+import bcrypt
+import os
+print(bcrypt.hashpw(os.environ['XXGKAMI_ADMIN_PASSWORD_RAW'].encode(), bcrypt.gensalt()).decode())
+PY
+)"
+unset XXGKAMI_ADMIN_PASSWORD_RAW
+mysql -u"$DB_USER" -p"${XXGKAMI_MYSQL_EFFECTIVE_PASS:-$DB_PASSWORD}" "$DB_NAME" -e "UPDATE admins SET password='${ADMIN_HASH}', totp_enabled=0, totp_secret=NULL, access_token=NULL, refresh_token=NULL WHERE username='admin';"
+
 _xxgkami_write_db_env_for_systemd
+{
+    printf '%s=%s\n' "JWT_SECRET" "$JWT_SECRET"
+    printf '%s=%s\n' "CORS_ALLOWED_ORIGINS" "http://${SERVER_NAME:-${PUBLIC_IP:-$(curl -s -4 ifconfig.me || echo 127.0.0.1)}}"
+    printf '%s=%s\n' "JWT_ACCESS_EXPIRATION_MS" "3600000"
+    printf '%s=%s\n' "JWT_REFRESH_EXPIRATION_MS" "604800000"
+} >> /etc/xxgkami/backend-datasource.env
+chmod 600 /etc/xxgkami/backend-datasource.env
+
 echo -e "${GREEN}已写入 /etc/xxgkami/backend-datasource.env（仅 systemctl 启动时读取；宝塔「Java项目」独立启动时请依赖即将打入 JAR 的 application.properties）${NC}"
 
 echo -e "${YELLOW}[5/8] 编译后端服务...${NC}"
@@ -3002,9 +3077,10 @@ server {
         alias $INSTALL_DIR/backend/uploads;
     }
 
-    # 后端 API 代理 (显式代理 /api 开头的请求)
+    # 后端 API 代理 (保留 /api 前缀)
     location /api {
-        proxy_pass http://localhost:8080/api;
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
@@ -3764,19 +3840,6 @@ _xxgkami_should_use_kami_mysql56_sql && REC_SQL_SERIES=56
 _xxgkami_write_install_record_bundle "$SITE_URL" "${SITE_URL}/#/admin" "$REC_SQL_SERIES"
 echo -e "${GREEN}已写入安装备忘（数据库、首页/管理端地址、默认管理员）: ${XXGKAMI_DEPLOY_ROOT%/}/.xxgkami-install-record${NC}"
 
-echo -e "用户端地址: ${SITE_URL}"
-echo -e "管理端地址: ${SITE_URL}/#/admin"
-echo -e "------------------------------------------------"
-echo -e "${GREEN}前端静态文件路径: ${XXGKAMI_WEB_ROOT}${NC}"
-echo -e "${GREEN}后端运行 JAR 路径: ${ABS_JAR_PATH}${NC}"
-echo -e "${GREEN}项目源码目录: ${INSTALL_DIR}${NC}"
-echo -e "------------------------------------------------"
-echo -e "默认管理员账号: admin"
-echo -e "管理员密码: ${ADMIN_PASSWORD:-安装时设置的随机密码}"
-echo -e "------------------------------------------------"
-echo -e "数据库账号: ${DB_USER}"
-echo -e "数据库密码: ${DB_PASSWORD}"
-echo -e "安装备忘文件: ${XXGKAMI_DEPLOY_ROOT%/}/.xxgkami-install-record（含数据库与访问地址、默认管理员）"
-echo -e "------------------------------------------------"
-echo -e "后端服务状态: systemctl status xxgkami"
-echo -e "Nginx状态: systemctl status nginx"
+echo -e "管理后台地址: ${SITE_URL}/#/admin"
+echo -e "管理员账号: admin"
+echo -e "管理员密码: ${ADMIN_PASSWORD}"
