@@ -159,14 +159,10 @@ _xxgkami_verify_admin_password() {
     local expected_hash
     expected_hash=$(mysql -N -B -u"$DB_USER" -p"$mysql_pass" "$DB_NAME" -e "SELECT password FROM admins WHERE username='admin' LIMIT 1;" 2>/dev/null | tr -d '\r') || return 1
     [ -n "$expected_hash" ] || return 1
-    # python3 / bcrypt 缺失时跳过校验（密码已写入，不影响后续登录），避免最小化系统安装中止
-    if ! command -v python3 >/dev/null 2>&1; then
-        echo -e "${YELLOW}[Admin] 未安装 python3，跳过 bcrypt 密码校验（密码已写入，可稍后登录验证）。${NC}"
-        return 0
-    fi
+    # 上游调用方已保证 python3+bcrypt 可用；这里失败即视为校验失败，绝不静默放行
     if ! python3 -c 'import bcrypt' >/dev/null 2>&1; then
-        echo -e "${YELLOW}[Admin] python3 bcrypt 模块不可用，跳过密码校验（密码已写入，可稍后登录验证）。${NC}"
-        return 0
+        echo -e "${RED}[Admin] python3 bcrypt 不可用，无法校验管理员密码。${NC}" >&2
+        return 1
     fi
     export XXGKAMI_VERIFY_ADMIN_HASH="$expected_hash"
     export XXGKAMI_VERIFY_ADMIN_PASSWORD="$plain_password"
@@ -2826,14 +2822,33 @@ if mysql -N -B -u"$DB_USER" -p"$MYSQL_EFFECTIVE_PASSWORD" "$DB_NAME" -e "SELECT 
         ADMIN_PASSWORD="$(grep '^XXGKAMI_ADMIN_PASSWORD=' "${XXGKAMI_DEPLOY_ROOT%/}/.xxgkami-install-record" | head -n 1 | cut -d= -f2-)"
     fi
     ADMIN_PASSWORD="${ADMIN_PASSWORD:-$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 14)}"
+    # 确保 bcrypt 可用：缺失时现场安装；仍不可用则中止（绝不写入坏哈希导致管理员被锁死）
+    if ! python3 -c 'import bcrypt' >/dev/null 2>&1; then
+        echo -e "${YELLOW}[Admin] python3 bcrypt 不可用，尝试现场安装…${NC}"
+        if [ -f /etc/debian_version ]; then
+            DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-bcrypt >/dev/null 2>&1 || true
+        elif [ -f /etc/redhat-release ]; then
+            { dnf install -y python3-bcrypt >/dev/null 2>&1 || yum install -y python3-bcrypt >/dev/null 2>&1; } || true
+        fi
+    fi
+    if ! python3 -c 'import bcrypt' >/dev/null 2>&1; then
+        echo -e "${RED}python3 bcrypt 安装失败，无法安全初始化管理员密码，安装中止。${NC}"
+        exit 1
+    fi
     export XXGKAMI_ADMIN_PASSWORD_RAW="$ADMIN_PASSWORD"
     ADMIN_HASH="$(python3 - <<'PY'
 import bcrypt
 import os
-print(bcrypt.hashpw(os.environ['XXGKAMI_ADMIN_PASSWORD_RAW'].encode(), bcrypt.gensalt()).decode())
+# 强制 $2a$ 前缀：与 Spring Security 以及旧版 DatabaseInitializer 的前缀判断完全兼容，
+# 避免 $2b$ 哈希被后端启动逻辑误判为明文再哈希、导致重启后密码失效
+print(bcrypt.hashpw(os.environ['XXGKAMI_ADMIN_PASSWORD_RAW'].encode(), bcrypt.gensalt(prefix=b"2a")).decode())
 PY
 )"
     unset XXGKAMI_ADMIN_PASSWORD_RAW
+    if [ -z "$ADMIN_HASH" ] || [ "${#ADMIN_HASH}" -lt 50 ]; then
+        echo -e "${RED}管理员密码哈希生成失败，安装中止。${NC}"
+        exit 1
+    fi
     if ! mysql -u"$DB_USER" -p"$MYSQL_EFFECTIVE_PASSWORD" "$DB_NAME" -e "UPDATE admins SET password='${ADMIN_HASH}', totp_enabled=0, totp_secret=NULL, access_token=NULL, refresh_token=NULL WHERE username='admin';"; then
         echo -e "${RED}管理员密码写入失败，已中止安装。${NC}"
         exit 1

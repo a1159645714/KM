@@ -54,28 +54,25 @@ public class DatabaseInitializer {
             java.sql.ResultSet rs = stmt.executeQuery("SELECT id, password FROM admins");
             
             org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder encoder = new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder();
+            // 标准 bcrypt 哈希格式：$2a$/$2b$/$2y$ + 两位 cost + 53 位盐哈希。
+            // 旧逻辑只认 $2a$/$2y$，会把 install.sh 写入的 $2b$ 哈希误判为明文再哈希一次，
+            // 导致「重启后原本正确的管理员密码失效」。
+            java.util.regex.Pattern bcryptPattern = java.util.regex.Pattern.compile("\\A\\$2[aby]\\$\\d{2}\\$[./0-9A-Za-z]{53}\\z");
             
             while (rs.next()) {
                 long id = rs.getLong("id");
                 String pwd = rs.getString("password");
                 
-                // Simple check: if password length < 50, it's likely plaintext (BCrypt is 60 chars)
-                // Or if it doesn't start with $2a$ or $2y$
-                boolean isPlain = false;
-                if (pwd == null || pwd.length() < 50) {
-                    isPlain = true;
-                } else if (!pwd.startsWith("$2a$") && !pwd.startsWith("$2y$")) {
-                    isPlain = true;
-                }
+                boolean isPlain = pwd == null || !bcryptPattern.matcher(pwd).matches();
                 
-                if (isPlain) {
+                if (isPlain && pwd != null && !pwd.isEmpty()) {
                     String newHash = encoder.encode(pwd);
                     java.sql.PreparedStatement ps = conn.prepareStatement("UPDATE admins SET password = ? WHERE id = ?");
                     ps.setString(1, newHash);
                     ps.setLong(2, id);
                     ps.executeUpdate();
                     ps.close();
-                    logger.info("Migrated legacy administrator password for id {}", id);
+                    logger.info("Migrated legacy plaintext administrator password for id {}", id);
                 }
             }
             rs.close();
