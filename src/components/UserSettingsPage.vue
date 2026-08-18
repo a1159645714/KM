@@ -42,7 +42,7 @@ import CryptoJS from 'crypto-js'
 import QRCode from 'qrcode'
 import { ElMessage } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
-import { authApi } from '../services/api'
+import { authApi } from '../services/api.js'
 
 const qrDialogVisible = ref(false)
 const qrCodeUrl = ref('')

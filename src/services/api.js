@@ -548,11 +548,6 @@ export const cardApi = {
     return await this.generateCards(data)
   },
 
-  async getCards(params = {}) {
-    const queryParams = new URLSearchParams(params).toString();
-    return await apiRequest(`/cards/admin/list${queryParams ? `?${queryParams}` : ''}`);
-  },
-
   async getAllCards() {
     const response = await apiRequest('/cards/admin/all')
     return response?.data ? response : { success: true, data: response }
@@ -586,70 +581,8 @@ export const cardApi = {
     return await this.updateCardStatus(id, status)
   },
 
-  async searchCards(params = {}) {
-    const queryParams = new URLSearchParams(params).toString();
-    return await apiRequest(`/cards/admin/search${queryParams ? `?${queryParams}` : ''}`);
-  },
-
-  async verifyCard(cardKey, machineCode, apiKey) {
-    return await apiRequest('/cards/verify', {
-      method: 'POST',
-      headers: apiKey ? { 'X-API-Key': apiKey } : {},
-      body: JSON.stringify({ cardKey, machineCode })
-    });
-  },
-
   async getUsageTrend(days = 30) {
     return await apiRequest(`/cards/trend?days=${days}`);
-  },
-
-  async exportCards(params = {}) {
-    const queryParams = new URLSearchParams(params).toString();
-    const url = `${API_BASE_URL}/cards/admin/export${queryParams ? `?${queryParams}` : ''}`;
-    const token = localStorage.getItem('token');
-    const response = await fetch(url, {
-      headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-    });
-    if (!response.ok) {
-      throw new Error('导出卡密失败');
-    }
-    return await response.blob();
-  },
-
-  async batchDelete(ids) {
-    return await apiRequest('/cards/admin/batch-delete', {
-      method: 'POST',
-      body: JSON.stringify({ ids })
-    });
-  },
-
-  async batchUpdateStatus(ids, status) {
-    return await apiRequest('/cards/admin/batch-status', {
-      method: 'POST',
-      body: JSON.stringify({ ids, status })
-    });
-  },
-
-  async batchExport(ids) {
-    return await apiRequest('/cards/admin/batch-export', {
-      method: 'POST',
-      body: JSON.stringify({ ids })
-    });
-  },
-
-  async getCardDetail(id) {
-    return await apiRequest(`/cards/admin/${id}`);
-  },
-
-  async findByMachineCode(machineCode) {
-    return await apiRequest(`/cards/admin/machine/${encodeURIComponent(machineCode)}`);
-  },
-
-  async selfUnbind(cardKey, machineCode) {
-    return await apiRequest('/cards/unbind', {
-      method: 'POST',
-      body: JSON.stringify({ cardKey, machineCode })
-    });
   },
 
   async getApiKeyCards(apiKeyId) {

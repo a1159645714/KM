@@ -139,7 +139,7 @@
 
 <script setup>
 import { reactive, ref, onMounted } from 'vue'
-import { settingsApi } from '../services/api'
+import { settingsApi } from '../services/api.js'
 
 // 邮箱设置
 const emailSettings = reactive({

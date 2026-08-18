@@ -428,7 +428,7 @@
 
 <script setup>
 import { ref, reactive, onMounted, computed } from 'vue'
-import { orderApi } from '../services/api'
+import { orderApi } from '../services/api.js'
 import { copyToClipboard } from '../utils/clipboard.js'
 
 // 响应式数据

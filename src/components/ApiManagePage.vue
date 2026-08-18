@@ -771,7 +771,7 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
-import { apiKeyApi, cardApi } from '../services/api'
+import { apiKeyApi, cardApi } from '../services/api.js'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { copyToClipboard } from '../utils/clipboard.js'
 import { highlightUseCardExample } from '../utils/useCardCodeHighlight.js'

@@ -819,8 +819,8 @@ export default {
 
     const handleBindSocial = (type) => {
        sessionStorage.setItem('binding_mode', 'true');
-       // Store current path to return to? App.vue usually redirects to home/user.
-       const apiUrl = import.meta.env.VITE_API_BASE_URL || '/api';
+       // 去除尾部斜杠，避免与 /oauth/login/... 拼接成双斜杠
+       const apiUrl = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/+$/, '');
        // We use the same login endpoint. Backend will return register token if not bound.
        window.location.href = `${apiUrl}/oauth/login/${type}`;
     }

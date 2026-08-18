@@ -90,11 +90,6 @@
       <SettingsPage 
         v-if="activeTab === 'settings'"
         :user-info="userInfo"
-        @save-settings="handleSaveSettings"
-        @clear-cache="handleClearCache"
-        @optimize-database="handleOptimizeDatabase"
-        @clear-logs="handleClearLogs"
-        @create-backup="handleCreateBackup"
       />
 
       <!-- 系统维护页面 -->
@@ -373,32 +368,6 @@ const handleToggleApiKey = (keyId) => {
     key.isActive = !key.isActive
   }
 }
-
-const handleSaveSettings = (settingsData) => {
-  console.log('保存设置:', settingsData)
-  // 这里可以添加保存设置的逻辑
-}
-
-const handleClearCache = () => {
-  console.log('清理缓存')
-  // 这里可以添加清理缓存的逻辑
-}
-
-const handleOptimizeDatabase = () => {
-  console.log('优化数据库')
-  // 这里可以添加优化数据库的逻辑
-}
-
-const handleClearLogs = () => {
-  console.log('清理日志')
-  // 这里可以添加清理日志的逻辑
-}
-
-const handleCreateBackup = () => {
-  console.log('创建备份')
-  // 这里可以添加创建备份的逻辑
-}
-
 
 // 初始化数据
 onMounted(async () => {

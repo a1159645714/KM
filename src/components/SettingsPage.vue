@@ -346,7 +346,7 @@ const props = defineProps({
   userInfo: Object
 })
 
-const emit = defineEmits(['save-settings', 'clear-cache', 'clear-logs', 'create-backup'])
+const emit = defineEmits(['save-settings'])
 
 const SITE_URL_PAYMENT_TIP_KEY = 'xxgkami_settings_site_url_payment_tip_dismissed'
 
