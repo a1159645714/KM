@@ -1,4 +1,4 @@
-﻿import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 const AUTH_EXPIRED_EVENT = 'xxgkami:auth-expired'
 let authExpiredHandled = false
@@ -483,9 +483,17 @@ export const cardApi = {
     });
   },
 
+  async createCards(data) {
+    return await this.generateCards(data)
+  },
+
   async getCards(params = {}) {
     const queryParams = new URLSearchParams(params).toString();
     return await apiRequest(`/cards/admin/list${queryParams ? `?${queryParams}` : ''}`);
+  },
+
+  async getAllCards() {
+    return await apiRequest('/cards/admin/all')
   },
 
   async getUserCards(userId) {
@@ -507,9 +515,13 @@ export const cardApi = {
 
   async updateCardStatus(id, status) {
     return await apiRequest(`/cards/admin/${id}/status`, {
-      method: 'POST',
+      method: 'PATCH',
       body: JSON.stringify({ status })
     });
+  },
+
+  async updateAdminStatus(id, status) {
+    return await this.updateCardStatus(id, status)
   },
 
   async searchCards(params = {}) {
@@ -576,6 +588,37 @@ export const cardApi = {
       method: 'POST',
       body: JSON.stringify({ cardKey, machineCode })
     });
+  },
+
+  async getApiKeyCards(apiKeyId) {
+    return await apiRequest(`/cards/apikey/${apiKeyId}`)
+  },
+
+  async useCard(cardKey, machineCode = '', apiKey = '', deviceId = '', ipAddress = '') {
+    return await apiRequest('/cards/use', {
+      method: 'POST',
+      body: JSON.stringify({
+        card_key: cardKey,
+        machine_code: machineCode,
+        api_key: apiKey,
+        device_id: deviceId,
+        ip_address: ipAddress
+      })
+    })
+  },
+
+  async publicMachineBindQuery(key) {
+    return await apiRequest('/machine-bind/query', {
+      method: 'POST',
+      body: JSON.stringify({ key })
+    })
+  },
+
+  async publicMachineUnbind(key) {
+    return await apiRequest('/machine-bind/unbind', {
+      method: 'POST',
+      body: JSON.stringify({ key })
+    })
   }
 };
 
