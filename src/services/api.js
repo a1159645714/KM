@@ -1,9 +1,56 @@
-import { ElMessage, ElMessageBox } from 'element-plus'
+﻿import { ElMessage, ElMessageBox } from 'element-plus'
 
-// API服务配置
-// 优先使用环境变量中的配置，如果没有则根据环境自动判断
-// 开发环境使用 http://localhost:8080/api
-// 生产环境使用 /api (通过Nginx反向代理)
+const AUTH_EXPIRED_EVENT = 'xxgkami:auth-expired'
+let authExpiredHandled = false
+
+function clearAuthStorage() {
+  localStorage.removeItem('token')
+  localStorage.removeItem('refreshToken')
+  localStorage.removeItem('user')
+  localStorage.removeItem('userInfo')
+  localStorage.removeItem('isLoggedIn')
+}
+
+function notifyAuthExpired(message = 'Current login expired, please sign in again') {
+  if (authExpiredHandled) return
+  authExpiredHandled = true
+
+  const storedUserInfo = localStorage.getItem('userInfo')
+  let isAdmin = false
+  if (storedUserInfo) {
+    try {
+      const parsed = JSON.parse(storedUserInfo)
+      isAdmin = parsed?.role === 'admin'
+    } catch (e) {
+      // Ignore invalid stored data.
+    }
+  }
+
+  clearAuthStorage()
+  window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT, {
+    detail: { isAdmin, message }
+  }))
+
+  ElMessage.closeAll()
+  ElMessageBox.alert(message, 'Login Expired', {
+    confirmButtonText: 'OK',
+    type: 'warning',
+    showClose: false,
+    callback: () => {
+      authExpiredHandled = false
+      if (isAdmin) {
+        window.location.href = '/#/admin'
+      } else {
+        window.location.href = '/'
+      }
+    }
+  })
+}
+
+// API閺堝秴濮熼柊宥囩枂
+// 娴兼ê鍘涙担璺ㄦ暏閻滎垰顣ㄩ崣姗€鍣烘稉顓犳畱闁板秶鐤嗛敍灞筋洤閺嬫粍鐥呴張澶婂灟閺嶈宓侀悳顖氼暔閼奉亜濮╅崚銈嗘焽
+// 瀵偓閸欐垹骞嗘晶鍐у▏閻?http://localhost:8080/api
+// 閻㈢喍楠囬悳顖氼暔娴ｈ法鏁?/api (闁俺绻僋ginx閸欏秴鎮滄禒锝囨倞)
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 let isRefreshing = false;
 let failedQueue = [];
@@ -20,14 +67,14 @@ const processQueue = (error, token = null) => {
 };
 
 /**
- * 通用的API请求函数
+ * 闁氨鏁ら惃鍑橮I鐠囬攱鐪伴崙鑺ユ殶
  */
 async function apiRequest(endpoint, options = {}) {
   const url = `${API_BASE_URL}${endpoint}`;
-  
+
   // Get token from storage
   const token = localStorage.getItem('token');
-  
+
   const defaultOptions = {
     method: 'GET',
     headers: {
@@ -47,98 +94,62 @@ async function apiRequest(endpoint, options = {}) {
 
   try {
     const response = await fetch(url, config);
-    
+
     if (response.status === 401) {
        if (endpoint.includes('/login') || endpoint.includes('/refresh')) {
-           throw new Error('Authentication failed');
-       }
+            throw new Error('Authentication failed');
+        }
 
-       if (isRefreshing) {
-         return new Promise((resolve, reject) => {
-           failedQueue.push({ resolve, reject });
-         }).then(newToken => {
-           config.headers['Authorization'] = `Bearer ${newToken}`;
-           return fetch(url, config).then(res => res.json());
-         });
-       }
+        if (isRefreshing) {
+          return new Promise((resolve, reject) => {
+            failedQueue.push({ resolve, reject });
+          }).then(newToken => {
+            config.headers['Authorization'] = `Bearer ${newToken}`;
+            return fetch(url, config).then(res => res.json());
+          });
+        }
 
-       isRefreshing = true;
-       const refreshToken = localStorage.getItem('refreshToken');
-       
-       if (!refreshToken) {
-           isRefreshing = false;
-           throw new Error('No refresh token available');
-       }
+        isRefreshing = true;
+        const refreshToken = localStorage.getItem('refreshToken');
 
-       try {
-           const refreshResponse = await fetch(`${API_BASE_URL}/auth/refresh`, {
-               method: 'POST',
-               headers: { 'Content-Type': 'application/json' },
-               body: JSON.stringify({ refreshToken })
-           });
+        if (!refreshToken) {
+            isRefreshing = false;
+            notifyAuthExpired();
+            throw new Error('No refresh token available');
+        }
 
-           const refreshData = await refreshResponse.json();
+        try {
+            const refreshResponse = await fetch(`${API_BASE_URL}/auth/refresh`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ refreshToken })
+            });
 
-           if (refreshData.success) {
-               const newToken = refreshData.data.token;
-               localStorage.setItem('token', newToken);
-               if (refreshData.data.refreshToken) {
-                   localStorage.setItem('refreshToken', refreshData.data.refreshToken);
-               }
-               
-               processQueue(null, newToken);
-               isRefreshing = false;
-               
-               // Retry original request
-               config.headers['Authorization'] = `Bearer ${newToken}`;
-               const retryResponse = await fetch(url, config);
-               return await retryResponse.json();
-           } else {
-               throw new Error('Refresh failed');
-           }
-       } catch (refreshError) {
-           processQueue(refreshError, null);
-           isRefreshing = false;
-           // Clear auth data
-           const storedUserInfo = localStorage.getItem('userInfo');
-           let isAdmin = false;
-           if (storedUserInfo) {
-               try {
-                   const u = JSON.parse(storedUserInfo);
-                   if (u.role === 'admin') isAdmin = true;
-               } catch (e) {}
-           }
+            const refreshData = await refreshResponse.json();
 
-           localStorage.removeItem('token');
-           localStorage.removeItem('refreshToken');
-           localStorage.removeItem('user');
-           localStorage.removeItem('userInfo');
-           localStorage.removeItem('isLoggedIn');
-           
-           // Show popup and redirect
-           ElMessageBox.alert('当前登录已过期，请重新登录', '登录过期', {
-             confirmButtonText: '确定',
-             type: 'warning',
-             showClose: false,
-             callback: () => {
-                // If admin, go to admin login (via reload or specific path)
-                // App.vue will handle routing based on URL
-                if (isAdmin) {
-                    // Ensure we are on an admin path so App.vue redirects to admin login
-                    if (!window.location.hash.includes('admin') && !window.location.pathname.includes('admin')) {
-                         window.location.href = '/#/admin';
-                    }
-                    window.location.reload();
-                } else {
-                    // User -> Home
-                    window.location.href = '/';
+            if (refreshData.success) {
+                const newToken = refreshData.data.token;
+                localStorage.setItem('token', newToken);
+                if (refreshData.data.refreshToken) {
+                    localStorage.setItem('refreshToken', refreshData.data.refreshToken);
                 }
-             }
-           });
-           
-           // Throw to stop execution
-           throw refreshError;
-       }
+
+                processQueue(null, newToken);
+                isRefreshing = false;
+
+                // Retry original request
+                config.headers['Authorization'] = `Bearer ${newToken}`;
+                const retryResponse = await fetch(url, config);
+                return await retryResponse.json();
+            } else {
+                throw new Error('Refresh failed');
+            }
+        } catch (refreshError) {
+            processQueue(refreshError, null);
+            isRefreshing = false;
+            notifyAuthExpired();
+            throw refreshError;
+        }
     }
 
     if (!response.ok) {
@@ -159,7 +170,7 @@ async function apiRequest(endpoint, options = {}) {
       }
       throw new Error(errorMsg);
     }
-    
+
     // Check content type before parsing JSON
     const contentType = response.headers.get("content-type");
     if (contentType && contentType.includes("application/json")) {
@@ -175,12 +186,10 @@ async function apiRequest(endpoint, options = {}) {
 }
 
 /**
- * 认证API服务
- */
+ * 鐠併倛鐦堿PI閺堝秴濮? */
 export const authApi = {
   /**
-   * 管理员登录
-   */
+   * 缁狅紕鎮婇崨妯兼瑜?   */
   async loginAdmin(username, password, totpCode) {
     return await apiRequest('/auth/admin/login', {
       method: 'POST',
@@ -189,7 +198,7 @@ export const authApi = {
   },
 
   /**
-   * 用户登录
+   * 閻劍鍩涢惂璇茬秿
    */
   async loginUser(username, password) {
     return await apiRequest('/auth/user/login', {
@@ -199,8 +208,7 @@ export const authApi = {
   },
 
   /**
-   * 发送邮箱验证码
-   */
+   * 閸欐垿鈧線鍋栫粻閬嶇崣鐠囦胶鐖?   */
   async sendEmailCode(email, type = 'register') {
     return await apiRequest('/auth/email-code', {
       method: 'POST',
@@ -209,7 +217,7 @@ export const authApi = {
   },
 
   /**
-   * 用户注册
+   * 閻劍鍩涘▔銊ュ斀
    */
   async register(data) {
     return await apiRequest('/auth/register', {
@@ -219,7 +227,7 @@ export const authApi = {
   },
 
   /**
-   * 绑定注册
+   * 缂佹垵鐣惧▔銊ュ斀
    */
   async registerBind(data) {
     return await apiRequest('/auth/register-bind', {
@@ -243,14 +251,14 @@ export const authApi = {
   },
 
   /**
-   * 获取当前用户信息
+   * 閼惧嘲褰囪ぐ鎾冲閻劍鍩涙穱鈩冧紖
    */
   async getUserInfo() {
     return await apiRequest('/auth/user/info');
   },
 
   /**
-   * 获取TOTP配置信息
+   * 閼惧嘲褰嘥OTP闁板秶鐤嗘穱鈩冧紖
    */
   async setupTotp(id) {
     return await apiRequest('/auth/totp/setup', {
@@ -259,19 +267,13 @@ export const authApi = {
     });
   },
 
-  /**
-   * 启用TOTP
-   */
-  async enableTotp(id, secret, code) {
+  async enableTotp(data) {
     return await apiRequest('/auth/totp/enable', {
       method: 'POST',
-      body: JSON.stringify({ id, secret, code })
+      body: JSON.stringify(data)
     });
   },
 
-  /**
-   * 禁用TOTP
-   */
   async disableTotp(id) {
     return await apiRequest('/auth/totp/disable', {
       method: 'POST',
@@ -279,19 +281,13 @@ export const authApi = {
     });
   },
 
-  /**
-   * 发送重置密码验证码
-   */
-  async sendResetCode(username, email) {
+  async sendResetPasswordCode(username, email) {
     return await apiRequest('/auth/reset-code', {
       method: 'POST',
       body: JSON.stringify({ username, email })
     });
   },
 
-  /**
-   * 重置密码
-   */
   async resetPassword(data) {
     return await apiRequest('/auth/reset-password', {
       method: 'POST',
@@ -299,18 +295,6 @@ export const authApi = {
     });
   },
 
-  /**
-   * 获取绑定Token
-   */
-  async getBindToken() {
-    return await apiRequest('/auth/bind/token', {
-      method: 'GET'
-    });
-  },
-
-  /**
-   * 发送TOTP恢复验证码
-   */
   async sendRecoveryCode(username) {
     return await apiRequest('/auth/totp/recovery-code', {
       method: 'POST',
@@ -318,271 +302,31 @@ export const authApi = {
     });
   },
 
-  /**
-   * 通过恢复码禁用TOTP
-   */
-  async disableTotpByRecovery(username, code) {
-    return await apiRequest('/auth/totp/disable-by-recovery', {
+  async disableTotpByRecoveryCode(username, recoveryCode) {
+    return await apiRequest('/auth/totp/recovery-disable', {
       method: 'POST',
-      body: JSON.stringify({ username, code })
+      body: JSON.stringify({ username, recoveryCode })
     });
-  }
+  },
+
+  async getBindToken() {
+    return await apiRequest('/auth/bind/token', {
+      method: 'POST'
+    });
+  },
+
+  async validateBindToken(userId, token) {
+    return await apiRequest('/auth/register-bind/validate', {
+      method: 'POST',
+      body: JSON.stringify({ userId, token })
+    });
+  },
 };
 
 /**
- * 系统监控API服务
- */
-export const monitorApi = {
-  /**
-   * 获取数据库状态
-   */
-  async getDatabaseStatus() {
-    return await apiRequest('/monitor/database');
-  },
-
-  /**
-   * 获取系统资源状态
-   */
-  async getSystemStatus() {
-    return await apiRequest('/monitor/system');
-  },
-
-  /**
-   * 获取API服务状态
-   */
-  async getApiStatus() {
-    return await apiRequest('/monitor/api');
-  },
-
-  /**
-   * 获取在线用户信息
-   */
-  async getOnlineUsers() {
-    return await apiRequest('/monitor/users');
-  },
-
-  /**
-   * 获取所有监控数据
-   */
-  async getAllMonitorData() {
-    return await apiRequest('/monitor/all');
-  }
-};
-
-/**
- * 用户管理API服务 (管理员)
- */
-export const userApi = {
-  // 获取用户列表 (分页, 搜索)
-  async getUsers(page = 1, size = 10, keyword = '') {
-    const params = new URLSearchParams({ page, size });
-    if (keyword) params.append('keyword', keyword);
-    return await apiRequest(`/admin/users?${params.toString()}`);
-  },
-
-  // 创建用户
-  async createUser(userData) {
-    return await apiRequest('/admin/users', {
-      method: 'POST',
-      body: JSON.stringify(userData)
-    });
-  },
-
-  // 更新用户
-  async updateUser(id, userData) {
-    return await apiRequest(`/admin/users/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(userData)
-    });
-  },
-
-  // 删除用户
-  async deleteUser(id) {
-    return await apiRequest(`/admin/users/${id}`, {
-      method: 'DELETE'
-    });
-  },
-
-  // 更新用户状态
-  async updateUserStatus(id, status) {
-    return await apiRequest(`/admin/users/${id}/status`, {
-      method: 'PUT',
-      body: JSON.stringify({ status })
-    });
-  }
-};
-
-/**
- * 在线用户管理API服务
- */
-export const onlineUserApi = {
-  /**
-   * 用户上线
-   */
-  async userLogin(userId, username, nickname) {
-    return await apiRequest('/online/login', {
-      method: 'POST',
-      body: JSON.stringify({
-        userId: userId.toString(),
-        username,
-        nickname
-      })
-    });
-  },
-
-  /**
-   * 用户下线
-   */
-  async userLogout(userId) {
-    return await apiRequest('/online/logout', {
-      method: 'POST',
-      body: JSON.stringify({
-        userId: userId.toString()
-      })
-    });
-  },
-
-  /**
-   * 发送心跳，更新用户活动时间
-   */
-  async sendHeartbeat(userId) {
-    return await apiRequest('/online/heartbeat', {
-      method: 'POST',
-      body: JSON.stringify({
-        userId: userId.toString()
-      })
-    });
-  },
-
-  /**
-   * 检查用户是否在线
-   */
-  async checkUserOnline(userId) {
-    return await apiRequest(`/online/check/${userId}`);
-  },
-
-  /**
-   * 获取在线用户列表
-   */
-  async getOnlineUsers() {
-    return await apiRequest('/online/list');
-  }
-};
-
-/**
- * 卡密管理API服务
- */
-export const cardApi = {
-  /**
-   * 批量创建卡密
-   */
-  async createCards(data) {
-    return await apiRequest('/cards/admin/create', {
-      method: 'POST',
-      body: JSON.stringify(data)
-    });
-  },
-
-  /**
-   * 获取所有卡密
-   */
-  async getAllCards() {
-    return await apiRequest('/cards/admin/all');
-  },
-
-  /**
-   * 获取指定API Key的卡密
-   */
-  async getApiKeyCards(apiKeyId) {
-    return await apiRequest(`/cards/apikey/${apiKeyId}`);
-  },
-
-  /**
-   * 获取卡密使用趋势
-   */
-  async getUsageTrend(days = 7) {
-    return await apiRequest(`/cards/trend?days=${days}`);
-  },
-
-  /**
-   * 使用卡密
-   */
-  async useCard(cardKey, deviceId = 'Unknown', ipAddress = '') {
-    return await apiRequest('/cards/use', {
-      method: 'POST',
-      body: JSON.stringify({ 
-        card_key: cardKey,
-        device_id: deviceId,
-        ip_address: ipAddress
-      })
-    });
-  },
-
-  /**
-   * 获取用户的卡密
-   */
-  async getUserCards(userId) {
-    return await apiRequest(`/cards/user/${userId}`);
-  },
-
-  /**
-   * 删除卡密
-   */
-  async deleteCard(cardId) {
-    return await apiRequest(`/cards/${cardId}`, {
-      method: 'DELETE'
-    });
-  },
-
-  /**
-   * 管理员：编辑卡密
-   */
-  async updateCard(cardId, data) {
-    return await apiRequest(`/cards/admin/${cardId}`, {
-      method: 'PUT',
-      body: JSON.stringify(data)
-    });
-  },
-
-  /**
-   * 管理员：暂停(2) / 恢复启用(1)
-   */
-  async updateAdminStatus(cardId, status) {
-    return await apiRequest(`/cards/admin/${cardId}/status`, {
-      method: 'PATCH',
-      body: JSON.stringify({ status })
-    });
-  },
-
-  /**
-   * 公开页：查询卡密是否已绑定机器码（无需登录）
-   */
-  async publicMachineBindQuery(cardKey) {
-    return await apiRequest('/public/cards/machine-bind/query', {
-      method: 'POST',
-      body: JSON.stringify({ card_key: cardKey })
-    });
-  },
-
-  /**
-   * 公开页：解绑机器码与设备 ID（无需登录，须已绑定）
-   */
-  async publicMachineUnbind(cardKey) {
-    return await apiRequest('/public/cards/machine-bind/unbind', {
-      method: 'POST',
-      body: JSON.stringify({ card_key: cardKey })
-    });
-  }
-};
-
-/**
- * 系统设置API服务
- */
+ * 鐠佸墽鐤咥PI閺堝秴濮? */
 export const settingsApi = {
-  /**
-   * 获取所有设置
-   */
-  async getAllSettings() {
+  async getSettings() {
     return await apiRequest('/settings/all');
   },
 
@@ -590,9 +334,6 @@ export const settingsApi = {
     return await apiRequest('/settings/public');
   },
 
-  /**
-   * 批量保存设置
-   */
   async saveSettings(settings) {
     return await apiRequest('/settings/save', {
       method: 'POST',
@@ -600,102 +341,249 @@ export const settingsApi = {
     });
   },
 
-  /**
-   * 发送测试邮件
-   */
-  async sendTestEmail(to, settings = {}) {
+  async testEmail(config) {
     return await apiRequest('/settings/email/test', {
       method: 'POST',
-      body: JSON.stringify({ to, ...settings })
+      body: JSON.stringify(config)
     });
   }
 };
 
 /**
- * 用户统计API服务
- */
-export const statsApi = {
-  /**
-   * 获取仪表盘统计数据
-   */
-  async getDashboardStats() {
-    return await apiRequest('/stats/dashboard');
+ * 缂佸瓨濮PI閺堝秴濮? */
+export const maintenanceApi = {
+  async getStatus() {
+    return await apiRequest('/maintenance/status');
   },
 
-  /**
-   * 获取用户活跃度统计
-   */
-  async getUserActivityStats(period = '7d') {
-    let days = period;
-    // 如果传入的是 '7d' 格式，提取数字
-    if (typeof period === 'string' && period.endsWith('d')) {
-        days = period.replace('d', '');
-    }
-    return await apiRequest(`/stats/user-activity?days=${days}`);
+  async updateSettings(settings) {
+    return await apiRequest('/maintenance/update', {
+      method: 'POST',
+      body: JSON.stringify(settings)
+    });
   },
 
-  /**
-   * 获取卡片使用趋势
-   */
-  async getCardUsageTrends(period = '7') {
-    const days = parseInt(period);
-    return await apiRequest(`/cards/trend?days=${days}`);
+  async clearCache() {
+    return await apiRequest('/maintenance/clear-cache', {
+      method: 'POST'
+    });
+  },
+
+  async clearLogs() {
+    return await apiRequest('/maintenance/clear-logs', {
+      method: 'POST'
+    });
   }
 };
 
 /**
- * 订单API服务
- */
-export const orderApi = {
-  /**
-   * 创建订单
-   */
-  async createOrder(data) {
-    return await apiRequest('/orders', {
+ * 婢跺洣鍞PI閺堝秴濮? */
+export const backupApi = {
+  async createBackup() {
+    return await apiRequest('/backup/create', {
+      method: 'POST'
+    });
+  }
+};
+
+/**
+ * 缁崵绮洪惄鎴炲付API閺堝秴濮? */
+export const monitorApi = {
+  async getSystemMetrics() {
+    return await apiRequest('/monitor/metrics');
+  },
+
+  async getJvmMetrics() {
+    return await apiRequest('/monitor/jvm');
+  },
+
+  async getDiskMetrics() {
+    return await apiRequest('/monitor/disk');
+  },
+
+  async getNetworkMetrics() {
+    return await apiRequest('/monitor/network');
+  },
+
+  async getProcessList() {
+    return await apiRequest('/monitor/processes');
+  },
+
+  async getAllMonitorData() {
+    return await apiRequest('/monitor/all');
+  },
+
+  async checkUpdate() {
+    return await apiRequest('/monitor/check-update');
+  }
+};
+
+/**
+ * 缂佺喕顓窤PI閺堝秴濮? */
+export const statsApi = {
+  async getStats() {
+    return await apiRequest('/stats');
+  }
+};
+
+/**
+ * 閸︺劎鍤庨悽銊﹀煕API閺堝秴濮? */
+export const onlineApi = {
+  async getOnlineUserList() {
+    return await apiRequest('/online/list');
+  }
+};
+
+/**
+ * 閻劍鍩涚粻锛勬倞API閺堝秴濮? */
+export const userApi = {
+  async getUsers() {
+    return await apiRequest('/admin/users');
+  },
+
+  async createUser(user) {
+    return await apiRequest('/admin/users', {
+      method: 'POST',
+      body: JSON.stringify(user)
+    });
+  },
+
+  async updateUser(id, user) {
+    return await apiRequest(`/admin/users/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(user)
+    });
+  },
+
+  async deleteUser(id) {
+    return await apiRequest(`/admin/users/${id}`, {
+      method: 'DELETE'
+    });
+  },
+
+  async updateUserPassword(id, newPassword) {
+    return await apiRequest(`/admin/users/${id}/password`, {
+      method: 'PUT',
+      body: JSON.stringify({ newPassword })
+    });
+  },
+
+  async getUserById(id) {
+    return await apiRequest(`/admin/users/${id}`);
+  }
+};
+
+/**
+ * 閸椻€崇槕API閺堝秴濮? */
+export const cardApi = {
+  async generateCards(data) {
+    return await apiRequest('/cards/admin/generate', {
       method: 'POST',
       body: JSON.stringify(data)
     });
   },
 
-  /**
-   * 获取用户订单列表
-   * @param {number} userId 
-   */
-  async getOrders() {
-    return await apiRequest('/orders');
+  async getCards(params = {}) {
+    const queryParams = new URLSearchParams(params).toString();
+    return await apiRequest(`/cards/admin/list${queryParams ? `?${queryParams}` : ''}`);
   },
 
-  /**
-   * 获取所有订单（管理员）
-   */
-  async getAllOrders(params = {}) {
-    // Filter out empty params
-    const queryParams = {};
-    Object.keys(params).forEach(key => {
-        if (params[key] !== null && params[key] !== '' && params[key] !== undefined) {
-            queryParams[key] = params[key];
-        }
+  async getUserCards(userId) {
+    return await apiRequest(`/cards/user/${userId}`);
+  },
+
+  async updateCard(id, data) {
+    return await apiRequest(`/cards/admin/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
     });
-    const queryString = new URLSearchParams(queryParams).toString();
-    return await apiRequest(`/orders/admin/all?${queryString}`);
   },
 
-  /**
-   * 更新订单状态（管理员）
-   */
-  async updateOrderStatus(orderNo, status) {
-    return await apiRequest('/orders/admin/updateStatus', {
+  async deleteCard(id) {
+    return await apiRequest(`/cards/admin/${id}`, {
+      method: 'DELETE'
+    });
+  },
+
+  async updateCardStatus(id, status) {
+    return await apiRequest(`/cards/admin/${id}/status`, {
       method: 'POST',
-      body: JSON.stringify({ orderNo, status })
+      body: JSON.stringify({ status })
+    });
+  },
+
+  async searchCards(params = {}) {
+    const queryParams = new URLSearchParams(params).toString();
+    return await apiRequest(`/cards/admin/search${queryParams ? `?${queryParams}` : ''}`);
+  },
+
+  async verifyCard(cardKey, machineCode, apiKey) {
+    return await apiRequest('/cards/verify', {
+      method: 'POST',
+      headers: apiKey ? { 'X-API-Key': apiKey } : {},
+      body: JSON.stringify({ cardKey, machineCode })
+    });
+  },
+
+  async getUsageTrend(days = 30) {
+    return await apiRequest(`/cards/trend?days=${days}`);
+  },
+
+  async exportCards(params = {}) {
+    const queryParams = new URLSearchParams(params).toString();
+    const url = `${API_BASE_URL}/cards/admin/export${queryParams ? `?${queryParams}` : ''}`;
+    const token = localStorage.getItem('token');
+    const response = await fetch(url, {
+      headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+    });
+    if (!response.ok) {
+      throw new Error('鐎电厧鍤径杈Е');
+    }
+    return await response.blob();
+  },
+
+  async batchDelete(ids) {
+    return await apiRequest('/cards/admin/batch-delete', {
+      method: 'POST',
+      body: JSON.stringify({ ids })
+    });
+  },
+
+  async batchUpdateStatus(ids, status) {
+    return await apiRequest('/cards/admin/batch-status', {
+      method: 'POST',
+      body: JSON.stringify({ ids, status })
+    });
+  },
+
+  async batchExport(ids) {
+    return await apiRequest('/cards/admin/batch-export', {
+      method: 'POST',
+      body: JSON.stringify({ ids })
+    });
+  },
+
+  async getCardDetail(id) {
+    return await apiRequest(`/cards/admin/${id}`);
+  },
+
+  async findByMachineCode(machineCode) {
+    return await apiRequest(`/cards/admin/machine/${encodeURIComponent(machineCode)}`);
+  },
+
+  async selfUnbind(cardKey, machineCode) {
+    return await apiRequest('/cards/unbind', {
+      method: 'POST',
+      body: JSON.stringify({ cardKey, machineCode })
     });
   }
 };
 
 /**
- * API Key管理服务
+ * API鐎靛棝鎸滈張宥呭
  */
 export const apiKeyApi = {
-  async getAllApiKeys() {
+  async getApiKeys() {
     return await apiRequest('/admin/apikeys');
   },
 
@@ -719,200 +607,130 @@ export const apiKeyApi = {
     });
   },
 
-  async assignUser(id, userId) {
-    return await apiRequest(`/admin/apikeys/${id}/users`, {
-      method: 'POST',
-      body: JSON.stringify({ userId })
-    });
-  },
-
-  async unassignUser(id, userId) {
-    return await apiRequest(`/admin/apikeys/${id}/users/${userId}`, {
-      method: 'DELETE'
-    });
-  },
-
-  async getAllUsers() {
-    return await apiRequest('/admin/users?size=9999');
+  async getApiKeyStats(id) {
+    return await apiRequest(`/admin/apikeys/${id}/stats`);
   }
 };
 
 /**
- * 卡密定价API服务
- */
+ * 鐠併垹宕烝PI閺堝秴濮? */
 export const pricingApi = {
-  getAllPricing() {
-    return apiRequest('/pricing');
+  async getAllPricing() {
+    return await apiRequest('/pricing')
   },
-  
-  addPricing(data) {
-    return apiRequest('/pricing', {
+
+  async addPricing(data) {
+    return await apiRequest('/pricing', {
       method: 'POST',
       body: JSON.stringify(data)
-    });
+    })
   },
-  
-  updatePricing(id, data) {
-    return apiRequest(`/pricing/${id}`, {
+
+  async updatePricing(id, data) {
+    return await apiRequest(`/pricing/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data)
+    })
+  },
+
+  async deletePricing(id) {
+    return await apiRequest(`/pricing/${id}`, {
+      method: 'DELETE'
+    })
+  }
+};
+
+export const orderApi = {
+  async createOrder(orderData) {
+    return await apiRequest('/orders/create', {
+      method: 'POST',
+      body: JSON.stringify(orderData)
     });
   },
-  
-  deletePricing(id) {
-    return apiRequest(`/pricing/${id}`, {
-      method: 'DELETE'
+
+  async getOrders() {
+    return await apiRequest('/orders');
+  },
+
+  async getAllOrders() {
+    return await apiRequest('/orders/admin/list');
+  },
+
+  async searchOrders(params = {}) {
+    const queryParams = new URLSearchParams(params).toString();
+    return await apiRequest(`/orders/admin/search${queryParams ? `?${queryParams}` : ''}`);
+  },
+
+  async updateOrderStatus(orderNo, status) {
+    return await apiRequest(`/orders/admin/${orderNo}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ status })
     });
   }
 };
 
 /**
- * 用户个人信息API服务
- */
-export const userProfileApi = {
-  /**
-   * 获取个人信息
-   */
-  async getProfile() {
-    return await apiRequest('/user/profile');
+ * 閺€顖欑帛API閺堝秴濮? */
+export const paymentApi = {
+  async createPayment(orderNo, paymentType) {
+    return await apiRequest('/payment/create', {
+      method: 'POST',
+      body: JSON.stringify({ orderNo, paymentType })
+    });
+  }
+};
+
+/**
+ * OAuth API閺堝秴濮? */
+export const oauthApi = {
+  async getLoginUrl(type) {
+    return await apiRequest(`/oauth/login/${type}`);
   },
 
-  /**
-   * 更新个人信息
-   */
+  async handleCallback(type, code) {
+    return await apiRequest(`/oauth/callback/${type}?code=${encodeURIComponent(code)}`);
+  }
+};
+
+/**
+ * 閻劍鍩涙稉顏冩眽鐠у嫭鏋PI閺堝秴濮? */
+export const userProfileApi = {
+  async getProfile() {
+    return await apiRequest('/auth/user/profile');
+  },
+
   async updateProfile(data) {
-    return await apiRequest('/user/profile', {
+    return await apiRequest('/auth/user/profile', {
       method: 'PUT',
       body: JSON.stringify(data)
     });
   },
 
-  /**
-   * 上传头像
-   */
-  async uploadAvatar(file) {
-    const formData = new FormData();
-    formData.append('file', file);
-    return await apiRequest('/user/avatar', {
-      method: 'POST',
-      body: formData
-    });
-  },
-
-  /**
-   * 修改密码
-   */
   async changePassword(oldPassword, newPassword) {
-    return await apiRequest('/user/password', {
-      method: 'POST',
+    return await apiRequest('/auth/user/password', {
+      method: 'PUT',
       body: JSON.stringify({ oldPassword, newPassword })
     });
   },
 
-  /**
-   * 获取社交账号绑定列表
-   */
-  async getSocialBindings() {
-    return await apiRequest('/user/social');
+  async getSocialAccounts() {
+    return await apiRequest('/auth/user/social-accounts');
   },
 
-  /**
-   * 绑定社交账号
-   */
+  async unbindSocial(type) {
+    return await apiRequest(`/auth/user/social-unbind/${type}`, {
+      method: 'POST'
+    });
+  },
+
   async bindSocial(token) {
-    return await apiRequest('/user/social/bind', {
+    return await apiRequest('/auth/user/social-bind', {
       method: 'POST',
       body: JSON.stringify({ token })
     });
-  },
-
-  /**
-   * 解绑社交账号
-   */
-  async unbindSocial(type) {
-    return await apiRequest('/user/social/unbind', {
-      method: 'POST',
-      body: JSON.stringify({ type })
-    });
   }
 };
 
-/**
- * 系统维护API服务
- */
-export const maintenanceApi = {
-  /**
-   * 获取维护状态
-   */
-  async getStatus() {
-    return await apiRequest('/maintenance/status');
-  },
+export { apiRequest, API_BASE_URL, AUTH_EXPIRED_EVENT };
 
-  /**
-   * 更新维护设置
-   */
-  async updateSettings(settings) {
-    return await apiRequest('/maintenance/update', {
-      method: 'POST',
-      body: JSON.stringify(settings)
-    });
-  },
 
-  /**
-   * 创建备份
-   */
-  async createBackup() {
-    return await apiRequest('/backup/create', {
-        method: 'POST'
-    });
-  },
-
-  /**
-   * 清理缓存
-   */
-  async clearCache() {
-    return await apiRequest('/maintenance/clear-cache', {
-        method: 'POST'
-    });
-  },
-
-  /**
-   * 清理日志
-   */
-  async clearLogs() {
-    return await apiRequest('/maintenance/clear-logs', {
-        method: 'POST'
-    });
-  }
-};
-
-/**
- * 支付API服务
- */
-export const paymentApi = {
-  /**
-   * 发起支付
-   */
-  async createPayment(data) {
-    return await apiRequest('/payment/pay', {
-      method: 'POST',
-      body: JSON.stringify(data)
-    });
-  }
-};
-
-export default {
-  authApi,
-  monitorApi,
-  onlineUserApi,
-  cardApi,
-  settingsApi,
-  statsApi,
-  orderApi,
-  apiKeyApi,
-  userApi,
-  userProfileApi,
-  maintenanceApi,
-  pricingApi,
-  paymentApi
-};

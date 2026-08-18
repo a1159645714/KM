@@ -6,7 +6,7 @@ import LoginForm from './components/loginform.vue'
 import Dashboard from './components/Dashboard.vue'
 import UserPage from './components/UserPage.vue'
 import NotificationPage from './components/NotificationPage.vue'
-import { authApi, maintenanceApi, userProfileApi } from './services/api.js'
+import { authApi, maintenanceApi, userProfileApi, AUTH_EXPIRED_EVENT } from './services/api.js'
 
 // 响应式数据
 const currentPage = ref('home') // 默认为首页
@@ -109,6 +109,14 @@ const handleLogout = async () => {
       loginType.value = 'user'
     }
   }
+}
+
+const handleAuthExpired = (event) => {
+  const isAdmin = Boolean(event?.detail?.isAdmin)
+  isLoggedIn.value = false
+  userInfo.value = null
+  loginType.value = isAdmin ? 'admin' : 'user'
+  currentPage.value = 'login'
 }
 
 // 检查维护状态
@@ -238,6 +246,7 @@ const handleOAuthCallback = async () => {
 
 // 组件挂载时检查登录状态
 onMounted(async () => {
+  window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired)
   await checkMaintenance()
   
   // 先检查 OAuth 回调
