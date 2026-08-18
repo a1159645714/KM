@@ -1041,15 +1041,14 @@ export default {
     const fetchPricing = async () => {
       try {
         const result = await pricingApi.getAllPricing();
-        // 后端 GET /pricing 返回 { success, data: [{ id, type, value, price, description }] }
-        const list = Array.isArray(result?.data) ? result.data : (Array.isArray(result) ? result : []);
-        if (list.length > 0) {
-          timeCardOptions.value = list
-            .filter(p => p.type === 'time')
-            .map(p => ({ id: p.id, duration: p.value, price: Number(p.price), description: p.description }));
-          countCardOptions.value = list
-            .filter(p => p.type === 'count')
-            .map(p => ({ id: p.id, count: p.value, price: Number(p.price), description: p.description }));
+        // 后端 GET /pricing 返回 { success, data: { timeCards: [...], countCards: [...] } }，
+        // 条目为 { id, type, value, price, description }；兼容旧版返回数组的形式
+        const data = result?.data || {};
+        const timeList = Array.isArray(data) ? data.filter(p => p.type === 'time') : (Array.isArray(data.timeCards) ? data.timeCards : []);
+        const countList = Array.isArray(data) ? data.filter(p => p.type === 'count') : (Array.isArray(data.countCards) ? data.countCards : []);
+        if (timeList.length > 0 || countList.length > 0) {
+          timeCardOptions.value = timeList.map(p => ({ id: p.id, duration: p.value, price: Number(p.price), description: p.description }));
+          countCardOptions.value = countList.map(p => ({ id: p.id, count: p.value, price: Number(p.price), description: p.description }));
         }
       } catch (e) {
         console.error("Failed to fetch pricing", e);
