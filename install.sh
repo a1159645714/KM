@@ -2677,6 +2677,7 @@ fi
 
 JWT_SECRET="${JWT_SECRET:-$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 48)}"
 MYSQL_EFFECTIVE_PASSWORD="${XXGKAMI_MYSQL_EFFECTIVE_PASS:-$DB_PASSWORD}"
+ADMIN_PASSWORD_STATUS="未初始化"
 if mysql -N -B -u"$DB_USER" -p"$MYSQL_EFFECTIVE_PASSWORD" "$DB_NAME" -e "SELECT 1 FROM admins WHERE username='admin' LIMIT 1;" 2>/dev/null | grep -q '^1$'; then
     if [ -z "${ADMIN_PASSWORD:-}" ] && [ -f "${XXGKAMI_DEPLOY_ROOT%/}/.xxgkami-install-record" ]; then
         ADMIN_PASSWORD="$(grep '^XXGKAMI_ADMIN_PASSWORD=' "${XXGKAMI_DEPLOY_ROOT%/}/.xxgkami-install-record" | head -n 1 | cut -d= -f2-)"
@@ -2695,9 +2696,9 @@ PY
         echo -e "${RED}管理员密码校验失败，已中止安装，请检查数据库写入与 bcrypt 环境。${NC}"
         exit 1
     fi
+    ADMIN_PASSWORD_STATUS="$ADMIN_PASSWORD"
 else
     echo -e "${YELLOW}未检测到 admin 管理员账号，跳过管理员密码初始化。${NC}"
-    ADMIN_PASSWORD="${ADMIN_PASSWORD:-未初始化}"
 fi
 
 _xxgkami_write_db_env_for_systemd
@@ -3952,4 +3953,4 @@ echo -e "${GREEN}已写入安装备忘（数据库、首页/管理端地址、�
 
 echo -e "管理后台地址: ${SITE_URL}/#/admin"
 echo -e "管理员账号: admin"
-echo -e "管理员密码: ${ADMIN_PASSWORD}"
+echo -e "管理员密码: ${ADMIN_PASSWORD_STATUS}"
