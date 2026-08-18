@@ -63,7 +63,6 @@ public class PaymentController {
         try {
             return paymentService.handleNotify(params);
         } catch (Exception e) {
-            e.printStackTrace();
             return "fail";
         }
     }
@@ -73,14 +72,8 @@ public class PaymentController {
         Map<String, String> params = new HashMap<>();
         request.getParameterMap().forEach((k, v) -> params.put(k, v[0]));
         
-        try {
-            // Try to process payment synchronously as a fallback for notify failure (especially in dev)
-            paymentService.handleNotify(params);
-        } catch (Exception e) {
-            // Ignore errors in return url processing, just redirect
-            System.err.println("Return URL processing error: " + e.getMessage());
-        }
-        
+        // Do not complete orders from the browser return URL; only the server notify callback may finalize payment.
+
         // Redirect to user page
         String siteUrl = settingsService.getSetting("site_url");
         String redirectUrl;

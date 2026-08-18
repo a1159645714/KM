@@ -6,14 +6,14 @@ export const mockAdmins = [
   {
     id: 1,
     username: '123',
-    password: '123456', // 原始密码，实际应用中会加密
+    password: 'mock-password', // 演示数据，勿用于真实登录
     create_time: '2025-05-06 09:13:25',
     last_login: '2025-05-20 08:18:44'
   },
   {
     id: 2,
     username: 'admin',
-    password: 'admin123',
+    password: 'mock-admin-password',
     create_time: '2025-01-01 10:00:00',
     last_login: '2025-01-15 14:30:00'
   }
@@ -25,7 +25,7 @@ export const mockUsers = [
     id: 1,
     username: 'testuser',
     email: 'test@example.com',
-    password: '123456', // 原始密码，实际应用中会加密
+    password: 'mock-password', // 演示数据，勿用于真实登录
     nickname: '测试用户',
     avatar: null,
     phone: '13800138000',

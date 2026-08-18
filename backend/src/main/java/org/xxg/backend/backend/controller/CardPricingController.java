@@ -1,6 +1,7 @@
 package org.xxg.backend.backend.controller;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.xxg.backend.backend.entity.CardPricing;
 import org.xxg.backend.backend.service.CardPricingService;
@@ -27,6 +28,7 @@ public class CardPricingController {
     }
 
     @PostMapping
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Map<String, Object>> addPricing(@RequestBody CardPricing pricing) {
         cardPricingService.addPricing(pricing);
         Map<String, Object> response = new HashMap<>();
@@ -36,6 +38,7 @@ public class CardPricingController {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Map<String, Object>> updatePricing(@PathVariable Integer id, @RequestBody CardPricing pricing) {
         pricing.setId(id);
         cardPricingService.updatePricing(pricing);
@@ -46,6 +49,7 @@ public class CardPricingController {
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Map<String, Object>> deletePricing(@PathVariable Integer id) {
         cardPricingService.deletePricing(id);
         Map<String, Object> response = new HashMap<>();

@@ -4,12 +4,16 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import jakarta.annotation.PostConstruct;
 import javax.sql.DataSource;
 
 @Configuration
 public class DatabaseInitializer {
+
+    private static final Logger logger = LoggerFactory.getLogger(DatabaseInitializer.class);
 
     @Autowired
     private DataSource dataSource;
@@ -21,7 +25,7 @@ public class DatabaseInitializer {
             resourceDatabasePopulator.setContinueOnError(true);
             resourceDatabasePopulator.execute(dataSource);
         } catch (Exception e) {
-            System.err.println("Failed to initialize advanced schema: " + e.getMessage());
+            logger.error("Failed to initialize advanced schema", e);
         }
         
         // Force update columns to ensure length is sufficient (in case schema.sql didn't run or was old)
@@ -32,15 +36,15 @@ public class DatabaseInitializer {
                 stmt.execute("ALTER TABLE cards MODIFY COLUMN card_key VARCHAR(512)");
                 stmt.execute("ALTER TABLE cards MODIFY COLUMN encrypted_key VARCHAR(255)");
                 stmt.execute("ALTER TABLE cards MODIFY COLUMN encryption_type VARCHAR(50)");
-                System.out.println("Successfully updated cards table columns.");
+                logger.info("Updated cards table columns.");
             } catch (Exception e) {
-                System.out.println("Column update might have failed (ignore if already updated): " + e.getMessage());
+                logger.warn("Column update failed; it may already be applied.", e);
             } finally {
                 stmt.close();
                 conn.close();
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            logger.error("Database initialization failed", e);
         }
 
         // Migrate plaintext passwords in admins table
@@ -71,14 +75,14 @@ public class DatabaseInitializer {
                     ps.setLong(2, id);
                     ps.executeUpdate();
                     ps.close();
-                    System.out.println("Migrated plaintext password for admin id: " + id);
+                    logger.info("Migrated legacy administrator password for id {}", id);
                 }
             }
             rs.close();
             stmt.close();
             conn.close();
         } catch (Exception e) {
-             System.out.println("Password migration check failed: " + e.getMessage());
+             logger.error("Password migration check failed", e);
         }
     }
 }

@@ -802,7 +802,7 @@ export default {
     // 获取OAuth配置
     const fetchOAuthSettings = async () => {
        try {
-         const res = await settingsApi.getAllSettings()
+         const res = await settingsApi.getPublicSettings()
          if (res.success && res.data) {
              const types = res.data.oauth_login_types || ''
              oauthLoginTypes.qq = types.includes('qq')
@@ -957,7 +957,7 @@ export default {
             
             // 并行获取订单和卡密状态
             const [ordersResult, cardsResult] = await Promise.all([
-                orderApi.getOrders(userId, { t: timestamp }), // Pass timestamp if API supports it, or just rely on headers
+                orderApi.getOrders(),
                 cardApi.getUserCards(userId)
             ]);
 

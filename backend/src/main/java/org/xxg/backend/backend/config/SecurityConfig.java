@@ -30,13 +30,18 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/auth/**").permitAll()
-                .requestMatchers("/payment/**").permitAll() // 确保支付回调公开访问
-                .requestMatchers("/maintenance/status").permitAll() // 允许未登录用户检查维护状态
-                .requestMatchers("/error").permitAll()
-                .requestMatchers("/admin/**").hasRole("ADMIN") // 强制 /admin/** 需要 ADMIN 角色
-                // .anyRequest().authenticated() // Uncomment to enforce strict security
-                .anyRequest().permitAll()
+                .requestMatchers("/auth/admin/login", "/auth/user/login", "/auth/refresh",
+                        "/auth/email-code", "/auth/register", "/auth/register-bind",
+                        "/auth/reset-code", "/auth/reset-password", "/auth/totp/recovery-code",
+                        "/oauth/**", "/error").permitAll()
+                .requestMatchers("/payment/notify", "/payment/return").permitAll()
+                .requestMatchers("/maintenance/status", "/settings/public").permitAll()
+                .requestMatchers("/public/cards/**", "/v1/**", "/custom/**").permitAll()
+                .requestMatchers(org.springframework.http.HttpMethod.GET, "/pricing").permitAll()
+                .requestMatchers("/admin/**", "/cards/admin/**", "/cards/apikey/**", "/cards/trend",
+                        "/pricing/**", "/settings/**", "/backup/**", "/maintenance/**",
+                        "/monitor/**", "/stats/**", "/online/list").hasRole("ADMIN")
+                .anyRequest().authenticated()
             )
             .exceptionHandling(exceptions -> exceptions
                 .authenticationEntryPoint((request, response, authException) -> {
@@ -59,7 +64,11 @@ public class SecurityConfig {
         // 当 AllowedOrigins 为 * 时，AllowCredentials 不能为 true，需改为 false 或指定具体 Origin
         // 这里为了兼容性，建议前端通过 Nginx 转发，或者指定具体 IP
         // 但为了方便用户直接测试 IP:8080，我们可以用 setAllowedOriginPatterns("*")
-        configuration.setAllowedOriginPatterns(List.of("*"));
+        String allowedOrigins = System.getenv().getOrDefault("CORS_ALLOWED_ORIGINS", "http://localhost:5173");
+        configuration.setAllowedOrigins(Arrays.stream(allowedOrigins.split(","))
+                .map(String::trim)
+                .filter(origin -> !origin.isEmpty())
+                .toList());
         configuration.setAllowCredentials(true);
         
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

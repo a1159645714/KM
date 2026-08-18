@@ -14,6 +14,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/admin")
 @CrossOrigin
+@org.springframework.security.access.prepost.PreAuthorize("hasRole('ADMIN')")
 public class ApiKeyController {
 
     private final ApiKeyService apiKeyService;
@@ -30,7 +31,6 @@ public class ApiKeyController {
         try {
             return ResponseEntity.ok(apiKeyService.getAllApiKeys());
         } catch (Exception e) {
-            e.printStackTrace();
             return ResponseEntity.internalServerError().body(Map.of("error", e.getClass().getName(), "message", e.getMessage()));
         }
     }

@@ -32,10 +32,8 @@ public class OAuthController {
             response.addCookie(cookie);
 
             String url = oAuthService.getLoginUrl(type);
-            System.out.println("Redirecting to OAuth URL: " + url); // Debug log
             response.sendRedirect(url);
         } catch (Exception e) {
-            e.printStackTrace();
             response.setStatus(500);
             response.setContentType("text/plain;charset=UTF-8");
             response.getWriter().write("OAuth Login Error: " + e.getMessage());

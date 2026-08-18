@@ -179,11 +179,12 @@ const handleOAuthCallback = async () => {
       handleLogout()
     }
   } else if (window.location.pathname.includes('/oauth/callback') || window.location.hash.includes('/oauth/callback')) {
-      // Check for needRegister param
-      const needRegister = urlParams.get('needRegister') || new URLSearchParams(window.location.hash.split('?')[1]).get('needRegister');
+      const hashQueryString = window.location.hash.includes('?') ? window.location.hash.split('?')[1] : ''
+      const hashParams = new URLSearchParams(hashQueryString)
+      const needRegister = urlParams.get('needRegister') || hashParams.get('needRegister')
       if (needRegister === 'true') {
-           const registerToken = urlParams.get('registerToken') || new URLSearchParams(window.location.hash.split('?')[1]).get('registerToken');
-           const nickname = urlParams.get('nickname') || new URLSearchParams(window.location.hash.split('?')[1]).get('nickname');
+           const registerToken = urlParams.get('registerToken') || hashParams.get('registerToken')
+           const nickname = urlParams.get('nickname') || hashParams.get('nickname')
            
            if (isBinding && registerToken) {
                try {
@@ -223,7 +224,7 @@ const handleOAuthCallback = async () => {
                return true;
            }
       } else {
-          const error = urlParams.get('error') || new URLSearchParams(window.location.hash.split('?')[1]).get('error');
+          const error = urlParams.get('error') || hashParams.get('error');
           if (error) {
               console.error('OAuth Error from provider:', error);
               alert('登录失败: ' + error);

@@ -70,6 +70,16 @@ public class OrderService {
              else totalCount = specValue;
         }
 
+        if (request.getUserId() == null || request.getUsername() == null || request.getUsername().isBlank()) {
+            throw new IllegalArgumentException("用户信息不完整");
+        }
+        if (request.getQuantity() == null || request.getQuantity() <= 0) {
+            throw new IllegalArgumentException("购买数量必须大于 0");
+        }
+        if (unitPrice.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("无效的卡密规格或价格配置");
+        }
+
         BigDecimal totalPrice = unitPrice.multiply(BigDecimal.valueOf(request.getQuantity()));
 
         // Initialize order

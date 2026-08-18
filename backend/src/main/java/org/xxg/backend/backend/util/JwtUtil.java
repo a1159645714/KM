@@ -5,7 +5,9 @@ import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Value;
 
+import java.nio.charset.StandardCharsets;
 import java.security.Key;
 import java.util.Date;
 import java.util.HashMap;
@@ -14,24 +16,34 @@ import java.util.Map;
 @Component
 public class JwtUtil {
 
-    // 使用固定密钥以保证重启后Token依然有效 (至少256位)
-    private static final String SECRET_STRING = "xxg_kami_secure_access_token_secret_key_2025_must_be_long_enough";
-    private static final Key SECRET_KEY = Keys.hmacShaKeyFor(SECRET_STRING.getBytes());
-    private static final long EXPIRATION_TIME = 3600000; // 1 hour
-    private static final long REFRESH_EXPIRATION_TIME = 604800000; // 7 days
+    private final Key secretKey;
+    private final long expirationTime;
+    private final long refreshExpirationTime;
+
+    public JwtUtil(
+            @Value("${jwt.secret:${JWT_SECRET:}}") String secret,
+            @Value("${jwt.access-expiration-ms:3600000}") long expirationTime,
+            @Value("${jwt.refresh-expiration-ms:604800000}") long refreshExpirationTime) {
+        if (secret == null || secret.length() < 32) {
+            throw new IllegalStateException("JWT_SECRET must be configured and contain at least 32 characters");
+        }
+        this.secretKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+        this.expirationTime = expirationTime;
+        this.refreshExpirationTime = refreshExpirationTime;
+    }
 
     public String generateToken(String username, String role) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("role", role);
         claims.put("type", "access");
-        return createToken(claims, username, EXPIRATION_TIME);
+        return createToken(claims, username, expirationTime);
     }
 
     public String generateRefreshToken(String username, String role) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("role", role);
         claims.put("type", "refresh");
-        return createToken(claims, username, REFRESH_EXPIRATION_TIME);
+        return createToken(claims, username, refreshExpirationTime);
     }
 
     private String createToken(Map<String, Object> claims, String subject, long expiration) {
@@ -40,7 +52,7 @@ public class JwtUtil {
                 .setSubject(subject)
                 .setIssuedAt(new Date(System.currentTimeMillis()))
                 .setExpiration(new Date(System.currentTimeMillis() + expiration))
-                .signWith(SECRET_KEY, SignatureAlgorithm.HS256)
+                .signWith(secretKey, SignatureAlgorithm.HS256)
                 .compact();
     }
 
@@ -76,7 +88,7 @@ public class JwtUtil {
     }
     
     public Claims extractAllClaims(String token) {
-        return Jwts.parserBuilder().setSigningKey(SECRET_KEY).build().parseClaimsJws(token).getBody();
+        return Jwts.parserBuilder().setSigningKey(secretKey).build().parseClaimsJws(token).getBody();
     }
 
     private boolean isTokenExpired(String token) {

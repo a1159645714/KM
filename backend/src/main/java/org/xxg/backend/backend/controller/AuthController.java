@@ -28,6 +28,28 @@ public class AuthController {
     @Autowired
     private SettingsService settingsService;
 
+    private Authentication requireAuthentication() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated() || "anonymousUser".equals(authentication.getName())) {
+            throw new RuntimeException("未登录");
+        }
+        return authentication;
+    }
+
+    private void requireAdminAccess(Authentication authentication, Long targetAdminId) {
+        if (authentication.getAuthorities().stream().noneMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))) {
+            throw new RuntimeException("权限不足");
+        }
+        Map<String, Object> current = authService.getUserInfo(authentication.getName(), "admin");
+        if (current == null || current.get("id") == null) {
+            throw new RuntimeException("管理员不存在");
+        }
+        Long currentAdminId = Long.valueOf(current.get("id").toString());
+        if (!currentAdminId.equals(targetAdminId)) {
+            throw new RuntimeException("不能操作其他管理员账户");
+        }
+    }
+
     @PostMapping("/refresh")
     public LoginResponse refresh(@RequestBody TokenRefreshRequest request) {
         Map<String, Object> data = authService.refreshToken(request.getRefreshToken());
@@ -39,18 +61,31 @@ public class AuthController {
 
     @PostMapping("/logout")
     public LoginResponse logout(@RequestBody Map<String, Object> request) {
-        if (request.get("id") != null && request.get("role") != null) {
+        try {
+            Authentication authentication = requireAuthentication();
+            if (request.get("id") == null || request.get("role") == null) {
+                return LoginResponse.error("参数错误");
+            }
             Long userId = Long.valueOf(request.get("id").toString());
             String role = (String) request.get("role");
+            String authRole = authentication.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN")) ? "admin" : "user";
+            Map<String, Object> currentUser = authService.getUserInfo(authentication.getName(), authRole);
+            if (currentUser == null || currentUser.get("id") == null) {
+                return LoginResponse.error("用户不存在");
+            }
+            Long currentUserId = Long.valueOf(currentUser.get("id").toString());
+            if (!currentUserId.equals(userId) || !authRole.equals(role)) {
+                return LoginResponse.error("无权登出其他用户");
+            }
             authService.logout(userId, role);
             return LoginResponse.success("登出成功", null);
+        } catch (Exception e) {
+            return LoginResponse.error(e.getMessage());
         }
-        return LoginResponse.error("参数错误");
     }
 
     @PostMapping("/admin/login")
     public LoginResponse loginAdmin(@RequestBody LoginRequest request) {
-        System.out.println("Login attempt for admin: " + request.getUsername());
         try {
             Map<String, Object> data = authService.loginAdmin(request.getUsername(), request.getPassword(), request.getTotpCode());
             if (data != null) {
@@ -59,10 +94,8 @@ public class AuthController {
                 }
                 return LoginResponse.success("登录成功", data);
             }
-            System.out.println("Login failed for admin: " + request.getUsername());
             return LoginResponse.error("用户名或密码错误");
         } catch (Exception e) {
-            e.printStackTrace();
             return LoginResponse.error("登录失败: " + e.getMessage());
         }
     }
@@ -72,6 +105,7 @@ public class AuthController {
     public LoginResponse setupTotp(@RequestBody Map<String, Long> request) {
         try {
             Long adminId = Long.valueOf(request.get("id").toString());
+            requireAdminAccess(requireAuthentication(), adminId);
             return LoginResponse.success("获取成功", authService.generateTotpSetup(adminId));
         } catch (Exception e) {
             return LoginResponse.error("获取失败: " + e.getMessage());
@@ -83,6 +117,7 @@ public class AuthController {
     public LoginResponse enableTotp(@RequestBody Map<String, Object> request) {
         try {
             Long adminId = Long.valueOf(request.get("id").toString());
+            requireAdminAccess(requireAuthentication(), adminId);
             String secret = (String) request.get("secret");
             String code = (String) request.get("code");
             authService.enableTotp(adminId, secret, code);
@@ -97,6 +132,7 @@ public class AuthController {
     public LoginResponse disableTotp(@RequestBody Map<String, Object> request) {
         try {
             Long adminId = Long.valueOf(request.get("id").toString());
+            requireAdminAccess(requireAuthentication(), adminId);
             authService.disableTotp(adminId);
             return LoginResponse.success("禁用成功", null);
         } catch (Exception e) {
@@ -109,10 +145,11 @@ public class AuthController {
     public LoginResponse updateAdmin(@RequestBody Map<String, Object> request) {
         try {
             Long id = Long.valueOf(request.get("id").toString());
+            requireAdminAccess(requireAuthentication(), id);
             String username = (String) request.get("username");
             String password = (String) request.get("password");
             String email = (String) request.get("email");
-            
+
             authService.updateAdmin(id, username, password, email);
             return LoginResponse.success("更新成功", null);
         } catch (Exception e) {
@@ -122,16 +159,13 @@ public class AuthController {
 
     @PostMapping("/user/login")
     public LoginResponse loginUser(@RequestBody LoginRequest request) {
-        System.out.println("Login attempt for user: " + request.getUsername() + ", password: " + request.getPassword());
         try {
             Map<String, Object> data = authService.loginUser(request.getUsername(), request.getPassword());
             if (data != null) {
                 return LoginResponse.success("登录成功", data);
             }
-            System.out.println("Login failed for user: " + request.getUsername());
             return LoginResponse.error("用户名或密码错误");
         } catch (Exception e) {
-            e.printStackTrace();
             return LoginResponse.error("系统错误: " + e.getMessage());
         }
     }
@@ -190,16 +224,13 @@ public class AuthController {
     @GetMapping("/user/info")
     public LoginResponse getUserInfo() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || !authentication.isAuthenticated()) {
+        if (authentication == null || !authentication.isAuthenticated() || "anonymousUser".equals(authentication.getName())) {
             return LoginResponse.error("未登录");
         }
-        
+
         String username = authentication.getName();
-        String role = "user";
-        if (authentication.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))) {
-            role = "admin";
-        }
-        
+        String role = authentication.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN")) ? "admin" : "user";
+
         try {
             Map<String, Object> data = authService.getUserInfo(username, role);
             if (data != null) {
@@ -243,26 +274,23 @@ public class AuthController {
     @GetMapping("/bind/token")
     public LoginResponse getBindToken() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || !authentication.isAuthenticated()) {
+        if (authentication == null || !authentication.isAuthenticated() || "anonymousUser".equals(authentication.getName())) {
             return LoginResponse.error("未登录");
         }
-        
+
         String username = authentication.getName();
-        String role = "user";
-        if (authentication.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))) {
-            role = "admin";
-        }
-        
+        String role = authentication.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN")) ? "admin" : "user";
+
         try {
             Map<String, Object> data = authService.getUserInfo(username, role);
             if (data != null && data.get("id") != null) {
                 Long userId = Long.valueOf(data.get("id").toString());
                 String token = authService.generateBindToken(userId);
-                String siteUrl = settingsService.getSetting("siteUrl");
+                String siteUrl = settingsService.getSetting("site_url");
                 if (siteUrl == null || siteUrl.isEmpty()) {
-                    siteUrl = ""; // Or some default value if needed
+                    siteUrl = "";
                 }
-                
+
                 Map<String, String> result = new HashMap<>();
                 result.put("token", token);
                 result.put("siteUrl", siteUrl);
@@ -279,17 +307,16 @@ public class AuthController {
         if (request.get("userId") == null || request.get("token") == null) {
             return LoginResponse.error("参数错误");
         }
-        
+
         try {
             Long userId = Long.valueOf(request.get("userId").toString());
             String token = (String) request.get("token");
             boolean isValid = authService.validateBindToken(userId, token);
-            
+
             if (isValid) {
                 return LoginResponse.success("验证成功", null);
-            } else {
-                return LoginResponse.error("验证失败或Token已过期");
             }
+            return LoginResponse.error("验证失败或Token已过期");
         } catch (Exception e) {
             return LoginResponse.error("验证失败: " + e.getMessage());
         }

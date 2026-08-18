@@ -2,6 +2,7 @@ package org.xxg.backend.backend.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.xxg.backend.backend.service.OnlineUserService;
 
@@ -89,6 +90,7 @@ public class OnlineUserController {
      * 获取在线用户列表
      */
     @GetMapping("/list")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Map<String, Object>> getOnlineUserList() {
         try {
             Map<String, Object> onlineInfo = onlineUserService.getOnlineUsersInfo();

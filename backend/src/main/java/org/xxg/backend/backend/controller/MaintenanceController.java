@@ -1,6 +1,7 @@
 package org.xxg.backend.backend.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.xxg.backend.backend.dto.LoginResponse;
 import org.xxg.backend.backend.entity.MaintenanceSettings;
@@ -26,6 +27,7 @@ public class MaintenanceController {
     }
 
     @PostMapping("/update")
+    @PreAuthorize("hasRole('ADMIN')")
     public LoginResponse updateSettings(@RequestBody MaintenanceSettings settings) {
         try {
             maintenanceService.updateSettings(settings);
@@ -35,7 +37,8 @@ public class MaintenanceController {
         }
     }
 
-    @RequestMapping(value = "/clear-cache", method = {RequestMethod.GET, RequestMethod.POST})
+    @PostMapping("/clear-cache")
+    @PreAuthorize("hasRole('ADMIN')")
     public LoginResponse clearCache() {
         try {
             maintenanceService.clearCache();
@@ -45,7 +48,8 @@ public class MaintenanceController {
         }
     }
 
-    @RequestMapping(value = "/clear-logs", method = {RequestMethod.GET, RequestMethod.POST})
+    @PostMapping("/clear-logs")
+    @PreAuthorize("hasRole('ADMIN')")
     public LoginResponse clearLogs() {
         try {
             maintenanceService.clearLogs();

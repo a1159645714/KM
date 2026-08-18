@@ -586,6 +586,10 @@ export const settingsApi = {
     return await apiRequest('/settings/all');
   },
 
+  async getPublicSettings() {
+    return await apiRequest('/settings/public');
+  },
+
   /**
    * 批量保存设置
    */
@@ -657,8 +661,8 @@ export const orderApi = {
    * 获取用户订单列表
    * @param {number} userId 
    */
-  async getOrders(userId) {
-    return await apiRequest(`/orders?userId=${userId}`);
+  async getOrders() {
+    return await apiRequest('/orders');
   },
 
   /**

@@ -491,7 +491,7 @@ onMounted(async () => {
 
   // Check settings for OAuth
   try {
-     const res = await settingsApi.getAllSettings()
+     const res = await settingsApi.getPublicSettings()
      if (res.success && res.data) {
         if (res.data.aggregatedLogin === 'true') {
            oauthEnabled.value = true

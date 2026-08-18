@@ -8,12 +8,20 @@ import org.xxg.backend.backend.mapper.SettingsMapper;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 系统设置服务
  */
 @Service
 public class SettingsService {
+
+    private static final Set<String> PUBLIC_SETTING_KEYS = Set.of(
+            "aggregatedLogin",
+            "oauth_login_types",
+            "maintenance_notice",
+            "site_url"
+    );
 
     private final SettingsMapper settingsMapper;
 
@@ -31,6 +39,17 @@ public class SettingsService {
             settingsMap.put(setting.getName(), setting.getValue());
         }
         return settingsMap;
+    }
+
+    public Map<String, String> getPublicSettings() {
+        Map<String, String> allSettings = getAllSettings();
+        Map<String, String> publicSettings = new HashMap<>();
+        for (String key : PUBLIC_SETTING_KEYS) {
+            if (allSettings.containsKey(key)) {
+                publicSettings.put(key, allSettings.get(key));
+            }
+        }
+        return publicSettings;
     }
 
     /**

@@ -34,3 +34,6 @@ build/
 
 ### Uploads ###
 uploads/
+keys/
+backups/
+logs/
