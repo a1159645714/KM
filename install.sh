@@ -2811,6 +2811,10 @@ if ! _xxgkami_sync_frontend_to_webroot "$INSTALL_DIR" "$NGINX_WEB_ROOT"; then
     echo -e "${RED}前端部署失败，请检查 npm run build 日志与目录结构。${NC}"
     exit 1
 fi
+if [ ! -f "$NGINX_WEB_ROOT/index.html" ]; then
+    echo -e "${RED}前端部署失败：未生成 $NGINX_WEB_ROOT/index.html${NC}"
+    exit 1
+fi
 
 # [修复] 目录 775 / 文件 664（组可写常见于 www 与同组运维；可被面板或 umask 再调整）
 echo -e "${YELLOW}正在修复前端文件权限 (${NGINX_WEB_ROOT}) ...${NC}"
@@ -3176,6 +3180,7 @@ EOF
         # 写入新配置
         echo "$NGINX_CONFIG_CONTENT" > "$TARGET_CONF"
         echo -e "${GREEN}Nginx 配置已写入: $TARGET_CONF${NC}"
+        echo -e "${GREEN}Nginx 站点根目录: ${NGINX_WEB_ROOT}${NC}"
     done
 
     # 额外清理 sites-enabled/default
