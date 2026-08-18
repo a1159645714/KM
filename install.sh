@@ -131,6 +131,26 @@ _xxgkami_write_install_record_bundle() {
     chmod 600 "$rf" 2>/dev/null || true
 }
 
+_xxgkami_verify_admin_password() {
+    local mysql_pass="$1"
+    local plain_password="$2"
+    local expected_hash
+    expected_hash=$(mysql -N -B -u"$DB_USER" -p"$mysql_pass" "$DB_NAME" -e "SELECT password FROM admins WHERE username='admin' LIMIT 1;" 2>/dev/null | tr -d '\r') || return 1
+    [ -n "$expected_hash" ] || return 1
+    export XXGKAMI_VERIFY_ADMIN_HASH="$expected_hash"
+    export XXGKAMI_VERIFY_ADMIN_PASSWORD="$plain_password"
+    python3 - <<'PY'
+import bcrypt
+import os
+stored = os.environ['XXGKAMI_VERIFY_ADMIN_HASH'].encode()
+plain = os.environ['XXGKAMI_VERIFY_ADMIN_PASSWORD'].encode()
+raise SystemExit(0 if bcrypt.checkpw(plain, stored) else 1)
+PY
+    local status=$?
+    unset XXGKAMI_VERIFY_ADMIN_HASH XXGKAMI_VERIFY_ADMIN_PASSWORD
+    return $status
+}
+
 # 检查是否为 root 用户
 if [ "$EUID" -ne 0 ]; then 
   echo -e "${RED}请使用 root 权限运行此脚本${NC}"
@@ -2656,16 +2676,29 @@ else
 fi
 
 JWT_SECRET="${JWT_SECRET:-$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 48)}"
-ADMIN_PASSWORD="${ADMIN_PASSWORD:-$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 14)}"
-export XXGKAMI_ADMIN_PASSWORD_RAW="$ADMIN_PASSWORD"
-ADMIN_HASH="$(python3 - <<'PY'
+MYSQL_EFFECTIVE_PASSWORD="${XXGKAMI_MYSQL_EFFECTIVE_PASS:-$DB_PASSWORD}"
+if mysql -N -B -u"$DB_USER" -p"$MYSQL_EFFECTIVE_PASSWORD" "$DB_NAME" -e "SELECT 1 FROM admins WHERE username='admin' LIMIT 1;" 2>/dev/null | grep -q '^1$'; then
+    if [ -z "${ADMIN_PASSWORD:-}" ] && [ -f "${XXGKAMI_DEPLOY_ROOT%/}/.xxgkami-install-record" ]; then
+        ADMIN_PASSWORD="$(grep '^XXGKAMI_ADMIN_PASSWORD=' "${XXGKAMI_DEPLOY_ROOT%/}/.xxgkami-install-record" | head -n 1 | cut -d= -f2-)"
+    fi
+    ADMIN_PASSWORD="${ADMIN_PASSWORD:-$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 14)}"
+    export XXGKAMI_ADMIN_PASSWORD_RAW="$ADMIN_PASSWORD"
+    ADMIN_HASH="$(python3 - <<'PY'
 import bcrypt
 import os
 print(bcrypt.hashpw(os.environ['XXGKAMI_ADMIN_PASSWORD_RAW'].encode(), bcrypt.gensalt()).decode())
 PY
 )"
-unset XXGKAMI_ADMIN_PASSWORD_RAW
-mysql -u"$DB_USER" -p"${XXGKAMI_MYSQL_EFFECTIVE_PASS:-$DB_PASSWORD}" "$DB_NAME" -e "UPDATE admins SET password='${ADMIN_HASH}', totp_enabled=0, totp_secret=NULL, access_token=NULL, refresh_token=NULL WHERE username='admin';"
+    unset XXGKAMI_ADMIN_PASSWORD_RAW
+    mysql -u"$DB_USER" -p"$MYSQL_EFFECTIVE_PASSWORD" "$DB_NAME" -e "UPDATE admins SET password='${ADMIN_HASH}', totp_enabled=0, totp_secret=NULL, access_token=NULL, refresh_token=NULL WHERE username='admin';"
+    if ! _xxgkami_verify_admin_password "$MYSQL_EFFECTIVE_PASSWORD" "$ADMIN_PASSWORD"; then
+        echo -e "${RED}管理员密码校验失败，已中止安装，请检查数据库写入与 bcrypt 环境。${NC}"
+        exit 1
+    fi
+else
+    echo -e "${YELLOW}未检测到 admin 管理员账号，跳过管理员密码初始化。${NC}"
+    ADMIN_PASSWORD="${ADMIN_PASSWORD:-未初始化}"
+fi
 
 _xxgkami_write_db_env_for_systemd
 {
@@ -2816,11 +2849,19 @@ if [ ! -f "$NGINX_WEB_ROOT/index.html" ]; then
     exit 1
 fi
 
-# [修复] 目录 775 / 文件 664（组可写常见于 www 与同组运维；可被面板或 umask 再调整）
-echo -e "${YELLOW}正在修复前端文件权限 (${NGINX_WEB_ROOT}) ...${NC}"
-find "$NGINX_WEB_ROOT" -type d -exec chmod 775 {} +
-find "$NGINX_WEB_ROOT" -type f -exec chmod 664 {} +
-chmod 775 "$NGINX_WEB_ROOT"
+# [修复] 目录/文件权限：保证 Nginx 可读，同时保留源码目录给部署用户继续构建
+INSTALL_OWNER="${SUDO_USER:-root}"
+INSTALL_GROUP="$INSTALL_OWNER"
+if ! id "$INSTALL_OWNER" >/dev/null 2>&1; then
+    INSTALL_OWNER="root"
+    INSTALL_GROUP="root"
+fi
+
+echo -e "${YELLOW}正在修复部署目录权限 (${XXGKAMI_DEPLOY_ROOT}) ...${NC}"
+chmod 755 /www 2>/dev/null || true
+chmod 755 /www/wwwroot 2>/dev/null || true
+chmod 755 "$XXGKAMI_DEPLOY_ROOT" 2>/dev/null || true
+chown -R "${INSTALL_OWNER}:${INSTALL_GROUP}" "$XXGKAMI_DEPLOY_ROOT"
 
 # 自动检测 Nginx 用户（宝塔常见 www）
 NGINX_USER="root"
@@ -2832,7 +2873,11 @@ elif id "nginx" &>/dev/null; then
     NGINX_USER="nginx"
 fi
 echo -e "${GREEN}检测到 Nginx 用户: ${NGINX_USER}${NC}"
-chown -R "${NGINX_USER}:${NGINX_USER}" "$NGINX_WEB_ROOT"
+
+echo -e "${YELLOW}正在修复前端文件权限 (${NGINX_WEB_ROOT}) ...${NC}"
+find "$NGINX_WEB_ROOT" -type d -exec chmod 755 {} +
+find "$NGINX_WEB_ROOT" -type f -exec chmod 644 {} +
+chmod 755 "$NGINX_WEB_ROOT"
 
 # 尝试修复 SELinux 上下文 (如果存在 restorecon 命令)
 if command -v restorecon &>/dev/null; then
