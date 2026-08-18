@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# XXG-KAMI-PRO 一键安装脚本
-# 作者: xiaoxiaoguai-yyds
+# KM 卡密系统一键安装脚本
+# 维护仓库: https://github.com/a1159645714/KM
 
 # 颜色定义
 RED='\033[0;31m'
@@ -10,9 +10,8 @@ YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# 国内 GitHub / 境外脚本拉取加速（用法：${GH_PROXY_CN}/<原始完整URL>，见 https://gh-proxy.com/ ）
-GH_PROXY_CN="${GH_PROXY_CN:-https://gh-proxy.com}"
-# 默认使用用户自己的公开 GitHub 仓库；也可运行前用 GIT_REPO 覆盖。
+# GitHub 下载设置。项目源码和升级脚本始终来自用户自己的仓库。
+GH_PROXY_CN="${GH_PROXY_CN:-}"
 GIT_REPO="${GIT_REPO:-https://github.com/a1159645714/KM.git}"
 GIT_BRANCH="${GIT_BRANCH:-master}"
 
@@ -140,17 +139,16 @@ XXGKAMI_USER_SQL_SERIES=""
 # check_mysql_version 置位：MariaDB 不支持 kami.sql 中 utf8mb4_0900_ai_ci 等 MySQL 8 语法，必须用 kami_mysql56.sql
 MYSQL_SERVER_IS_MARIADB=false
 
-# ---------- 国内 / 外网判定（全局，供分步安装与 Git 仓库使用）----------
+# ---------- 网络检测（仅用于选择软件源，不切换项目仓库）----------
 detect_network_region() {
     IS_CHINA=false
     if curl -s --connect-timeout 5 https://www.google.com >/dev/null 2>&1; then
         echo -e "${GREEN}检测到国外网络环境${NC}"
-        GIT_REPO="${GIT_REPO:-https://github.com/a1159645714/KM.git}"
     else
         IS_CHINA=true
         echo -e "${GREEN}检测到国内网络环境${NC}"
-        GIT_REPO="${GIT_REPO:-https://github.com/a1159645714/KM.git}"
     fi
+    echo -e "${GREEN}项目仓库固定为: ${GIT_REPO}${NC}"
 }
 
 # ---------- 运行时版本判定：0 表示已满足要求，1 表示需安装或版本过低 ----------
@@ -381,9 +379,8 @@ need_node_install() {
 _run_nodesource_setup_22() {
     local url="https://deb.nodesource.com/setup_22.x"
     if [ "$IS_CHINA" = true ]; then
-        echo -e "${YELLOW}Node：经 gh-proxy.com 加速拉取 NodeSource 安装脚本…${NC}"
-        url="${GH_PROXY_CN}/https://deb.nodesource.com/setup_22.x"
-        if curl -fsSL "$url" -o /tmp/nodesource_setup_22.sh; then
+        echo -e "${YELLOW}Node：正在拉取 NodeSource 安装脚本…${NC}"
+        if curl -fsSL "https://deb.nodesource.com/setup_22.x" -o /tmp/nodesource_setup_22.sh; then
             bash /tmp/nodesource_setup_22.sh
             return $?
         fi
@@ -968,9 +965,9 @@ _install_java20_via_temurin_debian() {
     ADOPTIUM_KEY_FALLBACK="https://packages.adoptium.net/artifactory/api/gpg/key/public"
 
     if [ "$IS_CHINA" = true ]; then
-        if curl -fsSL "${GH_PROXY_CN}/${ADOPTIUM_KEY_FALLBACK}" | gpg --dearmor -o /etc/apt/keyrings/adoptium.gpg 2>/dev/null; then
+        if curl -fsSL "${ADOPTIUM_KEY_FALLBACK}" | gpg --dearmor -o /etc/apt/keyrings/adoptium.gpg 2>/dev/null; then
             :
-        elif wget -qO- "${GH_PROXY_CN}/${ADOPTIUM_KEY_FALLBACK}" 2>/dev/null | gpg --dearmor -o /etc/apt/keyrings/adoptium.gpg 2>/dev/null; then
+        elif wget -qO- "${ADOPTIUM_KEY_FALLBACK}" 2>/dev/null | gpg --dearmor -o /etc/apt/keyrings/adoptium.gpg 2>/dev/null; then
             :
         elif curl -fsSL "${ADOPTIUM_KEY_PRIMARY}" | gpg --dearmor -o /etc/apt/keyrings/adoptium.gpg 2>/dev/null; then
             :
@@ -1149,11 +1146,7 @@ install_node22_pkg() {
         DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs
     elif [ -f /etc/redhat-release ]; then
         yum install -y curl ca-certificates || dnf install -y curl ca-certificates
-        if [ "$IS_CHINA" = true ]; then
-            curl -fsSL "${GH_PROXY_CN}/https://rpm.nodesource.com/setup_22.x" | bash - || curl -fsSL https://rpm.nodesource.com/setup_22.x | bash -
-        else
-            curl -fsSL https://rpm.nodesource.com/setup_22.x | bash -
-        fi
+        curl -fsSL https://rpm.nodesource.com/setup_22.x | bash -
         yum install -y nodejs || dnf install -y nodejs
     else return 1; fi
 }
@@ -1201,7 +1194,7 @@ install_runtime_stack_interactive() {
     need_node_install >/dev/null 2>&1 || step_node=true
 
     MIR_LABEL="官方下载源"
-    [ "$IS_CHINA" = true ] && MIR_LABEL="国内加速（GitHub 类资源：${GH_PROXY_CN}；APT/YUM 请配阿里云等镜像）"
+    [ "$IS_CHINA" = true ] && MIR_LABEL="国内网络（项目源码仍固定使用用户 GitHub 仓库）"
 
     for comp_tag in nginx mysql redis java node; do
         case $comp_tag in
@@ -1283,7 +1276,7 @@ show_menu() {
     echo -e "${BLUE}        XXG-KAMI-PRO 一键部署脚本 v1.1          ${NC}"
     echo -e "${BLUE}================================================${NC}"
     echo -e "欢迎使用小小怪卡密管理系统安装脚本！"
-    echo -e "开源地址: https://github.com/xiaoxiaoguai-yyds/xxgkami-pro"
+    echo -e "项目仓库: https://github.com/a1159645714/KM"
     echo -e "管理系统售后群: 1050160397"
     echo -e "${BLUE}================================================${NC}"
     echo -e "系统信息:"
@@ -1423,13 +1416,11 @@ while true; do
             ;;
         3)
             echo -e "${YELLOW}正在更新脚本...${NC}"
-            _RAW_MASTER="https://raw.githubusercontent.com/xiaoxiaoguai-yyds/xxgkami-pro/refs/heads/master/install.sh"
-            if wget -O install.sh "${GH_PROXY_CN}/${_RAW_MASTER}" 2>/dev/null || curl -fsSL -o install.sh "${GH_PROXY_CN}/${_RAW_MASTER}"; then
-                chmod +x install.sh
-            elif wget -O install.sh "$_RAW_MASTER" 2>/dev/null || curl -fsSL -o install.sh "$_RAW_MASTER"; then
+            _RAW_MASTER="https://raw.githubusercontent.com/a1159645714/KM/master/install.sh"
+            if wget -O install.sh "$_RAW_MASTER" 2>/dev/null || curl -fsSL -o install.sh "$_RAW_MASTER"; then
                 chmod +x install.sh
             else
-                echo -e "${RED}脚本下载失败（已尝试 gh-proxy 与直连）${NC}"
+                echo -e "${RED}脚本下载失败（请检查 GitHub 网络连接）${NC}"
                 exit 1
             fi
             echo -e "${GREEN}脚本更新完成，请重新运行 ./install.sh${NC}"
@@ -2056,7 +2047,7 @@ while true; do
                 echo -e "\${BLUE}================================================\${NC}"
                 echo -e "\${GREEN}感谢您使用小小怪卡密管理系统！\${NC}"
                 echo -e "山水有相逢，愿我们在代码的世界里再次相遇。"
-                echo -e "项目开源地址: https://github.com/xiaoxiaoguai-yyds/xxgkami-pro"
+                echo -e "项目开源地址: https://github.com/a1159645714/KM"
                 echo -e "管理系统售后群: 1050160397"
                 echo -e "\${BLUE}================================================\${NC}"
                 
@@ -3652,7 +3643,7 @@ while true; do
                 echo -e "\${BLUE}================================================\${NC}"
                 echo -e "\${GREEN}感谢您使用小小怪卡密管理系统！\${NC}"
                 echo -e "山水有相逢，愿我们在代码的世界里再次相遇。"
-                echo -e "项目开源地址: https://github.com/xiaoxiaoguai-yyds/xxgkami-pro"
+                echo -e "项目开源地址: https://github.com/a1159645714/KM"
                 echo -e "管理系统售后群: 1050160397"
                 echo -e "\${BLUE}================================================\${NC}"
                 

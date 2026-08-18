@@ -1,7 +1,7 @@
 {
   "version": "1.0.6",
   "buildDate": "2026-05-06",
-  "repoUrl": "https://github.com/xiaoxiaoguai-yyds/xxgkami-pro",
+  "repoUrl": "https://github.com/a1159645714/KM",
   "changelog": [
     "1. 新增 API 密钥管理页「代码实例」入口（位于「接口文档」左侧），便于快速查阅核销接口调用方式",
     "2. 新增核销接口多语言示例弹窗：覆盖 Shell（cURL/Wget/HTTPie 等）、PowerShell、Node.js、浏览器/JavaScript、HTML、Vue 3、Python、PHP、Go、Java、C#、Ruby、Kotlin、Dart、Rust、Swift 等常见语言与工具",
@@ -18,7 +18,7 @@
     "13. 修复已激活时间卡在后台修改时长不生效的问题"
   ],
   "updateScripts": {
-    "cn": "curl -O https://gitee.com/xiaoxiaoguai-yyds/xxgkami-pro/raw/master/install.sh && chmod +x install.sh && sudo ./install.sh",
-    "global": "curl -O https://raw.githubusercontent.com/xiaoxiaoguai-yyds/xxgkami-pro/refs/heads/master/install.sh && chmod +x install.sh && sudo ./install.sh"
+    "cn": "curl -O https://raw.githubusercontent.com/a1159645714/KM/master/install.sh && chmod +x install.sh && sudo ./install.sh",
+    "global": "curl -O https://raw.githubusercontent.com/a1159645714/KM/master/install.sh && chmod +x install.sh && sudo ./install.sh"
   }
 }

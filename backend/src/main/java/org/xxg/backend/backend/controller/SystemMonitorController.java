@@ -90,7 +90,7 @@ public class SystemMonitorController {
     @GetMapping("/check-update")
     public ResponseEntity<?> checkUpdate() {
         try {
-            String url = "https://gitee.com/xiaoxiaoguai-yyds/xxgkami-pro/raw/master/public/version.json";
+            String url = "https://raw.githubusercontent.com/a1159645714/KM/master/public/version.json";
             org.springframework.web.client.RestTemplate restTemplate = new org.springframework.web.client.RestTemplate();
             String result = restTemplate.getForObject(url, String.class);
             // Parse JSON manually or return string directly. 

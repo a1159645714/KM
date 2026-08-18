@@ -13,7 +13,7 @@
 
 **🔥 采用最新技术栈重构，性能提升300%，用户体验全面升级！**
 
-[🌟 立即体验](https://xiaoxiaoguai-yyds.github.io/web.xxgkami.github.io) · [📖 查看文档](#使用文档) · [🐛 反馈问题](https://github.com/xiaoxiaoguai-yyds/xxgkami-pro/issues) · [💬 加入讨论](https://github.com/xiaoxiaoguai-yyds/xxgkami-pro/discussions)
+[📖 查看文档](#使用文档) · [🐛 反馈问题](https://github.com/a1159645714/KM/issues) · [💬 加入讨论](https://github.com/a1159645714/KM/discussions)
 
 </div>
 
@@ -27,18 +27,13 @@
 
 适用于 CentOS 7+ / Debian 10+ / Ubuntu 20.04+ 系统，全自动环境配置。
 
-**国内服务器（Gitee 源）：**
+**服务器部署（GitHub 公开仓库）：**
 ```bash
-curl -O https://gitee.com/xiaoxiaoguai-yyds/xxgkami-pro/raw/master/install.sh && chmod +x install.sh && sudo ./install.sh
-```
-
-**海外服务器（GitHub 源）：**
-```bash
-curl -O https://raw.githubusercontent.com/xiaoxiaoguai-yyds/xxgkami-pro/refs/heads/master/install.sh && chmod +x install.sh && sudo ./install.sh
+curl -fsSL https://raw.githubusercontent.com/a1159645714/KM/master/install.sh -o install.sh && chmod +x install.sh && sudo ./install.sh
 ```
 
 **脚本功能：**
-- ✅ 自动检测网络环境（GitHub/Gitee 源自动切换）
+- ✅ 统一从用户维护的公开 GitHub 仓库获取项目源码
 - ✅ 自动安装 JDK 20, MySQL 8.0, Nginx, Node.js 环境
 - ✅ 自动编译前后端代码并配置 Systemd 开机自启
 - ✅ 自动配置 Nginx 反向代理与静态资源托管
@@ -66,7 +61,7 @@ curl -O https://raw.githubusercontent.com/xiaoxiaoguai-yyds/xxgkami-pro/refs/hea
 
 适用于已有宝塔面板的服务器，使用编译好的制品快速部署。
 
-1. **下载编译制品**：从 [Releases](https://github.com/xiaoxiaoguai-yyds/xxgkami-pro/releases) 下载最新的 `backend.jar` 和 `dist.zip`。
+1. **下载编译制品**：从 [Releases](https://github.com/a1159645714/KM/releases) 下载最新的 `backend.jar` 和 `dist.zip`。
 2. **后端部署**：
    - 在宝塔“Java项目”中添加项目。
    - 上传 `backend.jar`，选择 JDK 20。
@@ -91,8 +86,8 @@ curl -O https://raw.githubusercontent.com/xiaoxiaoguai-yyds/xxgkami-pro/refs/hea
 
 1. **克隆代码**
    ```bash
-   git clone https://github.com/xiaoxiaoguai-yyds/xxgkami-pro.git
-   cd xxgkami-pro
+   git clone https://github.com/a1159645714/KM.git
+   cd KM
    ```
 
 2. **后端编译**
@@ -226,8 +221,8 @@ curl -O https://raw.githubusercontent.com/xiaoxiaoguai-yyds/xxgkami-pro/refs/hea
 ### 🏆 **贡献者排行榜**
 感谢所有为项目做出贡献的开发者！
 
-<a href="https://github.com/xiaoxiaoguai-yyds/xxgkami-pro/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=xiaoxiaoguai-yyds/xxgkami-pro" />
+<a href="https://github.com/a1159645714/KM/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=a1159645714/KM" />
 </a>
 
 ---
@@ -252,22 +247,17 @@ curl -O https://raw.githubusercontent.com/xiaoxiaoguai-yyds/xxgkami-pro/refs/hea
 ## 📞 联系我们
 
 ### 💬 **社区交流**
-- 🐛 [问题反馈](https://github.com/xiaoxiaoguai-yyds/xxgkami-pro/issues)
-- 💡 [功能建议](https://github.com/xiaoxiaoguai-yyds/xxgkami-pro/discussions)
+- 🐛 [问题反馈](https://github.com/a1159645714/KM/issues)
+- 💡 [功能建议](https://github.com/a1159645714/KM/discussions)
 - � **官方交流群**：`1050160397` (售后/技术支持)
 - �📧 **联系邮箱**：`xxgyyds@vip.qq.com`
 
 ### 🌐 **开源地址**
-- 🐙 **GitHub**: [https://github.com/xiaoxiaoguai-yyds/xxgkami-pro](https://github.com/xiaoxiaoguai-yyds/xxgkami-pro)
-- 🔴 **Gitee**: [https://gitee.com/xiaoxiaoguai-yyds/xxgkami-pro](https://gitee.com/xiaoxiaoguai-yyds/xxgkami-pro)
-- 🚀 **GitCode**: [https://atomgit.com/xiaoxiaoguai-yyds/xxgkami-pro](https://atomgit.com/xiaoxiaoguai-yyds/xxgkami-pro)
+- 🐙 **GitHub**: [https://github.com/a1159645714/KM](https://github.com/a1159645714/KM)
+
 
 ### 🌐 **官方链接**
-- 🏠 [官方网站](https://xiaoxiaoguai-yyds.github.io/xxgkami.github.io/index.html)
-- 📖 [在线文档](https://xiaoxiaoguai-yyds.github.io/xxgkami.github.io/)
-- 🐱 [GitHub 仓库](https://github.com/xiaoxiaoguai-yyds/xxgkami-pro)
-- 🔴 [Gitee 仓库](https://gitee.com/xiaoxiaoguai-yyds/xxgkami-pro)
-- 🚀 [GitCode 仓库](https://atomgit.com/xiaoxiaoguai-yyds/xxgkami-pro)
+- 🐱 [GitHub 仓库](https://github.com/a1159645714/KM)
 
 ---
 
@@ -279,7 +269,7 @@ curl -O https://raw.githubusercontent.com/xiaoxiaoguai-yyds/xxgkami-pro/refs/hea
 
 ## ⭐ Star 历史
 
-[![Star History Chart](https://api.star-history.com/svg?repos=xiaoxiaoguai-yyds/xxgkami-pro&type=Date)](https://star-history.com/#xiaoxiaoguai-yyds/xxgkami-pro&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=a1159645714/KM&type=Date)](https://star-history.com/#a1159645714/KM&Date)
 
 ---
 

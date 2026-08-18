@@ -35,19 +35,13 @@
           </div>
         </template>
         <el-descriptions :column="1" border>
-          <el-descriptions-item label="作者">小小怪</el-descriptions-item>
-          <el-descriptions-item label="联系邮箱">xxgyyds@vip.qq.com</el-descriptions-item>
+          <el-descriptions-item label="维护者">a1159645714</el-descriptions-item>
+          <el-descriptions-item label="项目仓库">KM</el-descriptions-item>
           <el-descriptions-item label="QQ群组">
             <a href="https://qm.qq.com/cgi-bin/qm/qr?k=5q7h3tdOC-fXyszk3kGCJxIImDW_hVBP&jump_from=webapi&authKey=n7o2H5vcTCkRNpnTbOSU9BxI4jP3WKv9Qytmfk2I2Y+zP28lb614xqvd3+qETV8x" target="_blank" class="link">1050160397 (点击加入)</a>
           </el-descriptions-item>
-          <el-descriptions-item label="Gitee">
-            <a href="https://gitee.com/xiaoxiaoguai-yyds/xxgkami-pro" target="_blank" class="link">https://gitee.com/xiaoxiaoguai-yyds/xxgkami-pro</a>
-          </el-descriptions-item>
           <el-descriptions-item label="GitHub">
-            <a href="https://github.com/xiaoxiaoguai-yyds/xxgkami-pro" target="_blank" class="link">https://github.com/xiaoxiaoguai-yyds/xxgkami-pro</a>
-          </el-descriptions-item>
-          <el-descriptions-item label="AtomGit">
-            <a href="https://atomgit.com/xiaoxiaoguai-yyds/xxgkami-pro" target="_blank" class="link">https://atomgit.com/xiaoxiaoguai-yyds/xxgkami-pro</a>
+            <a href="https://github.com/a1159645714/KM" target="_blank" class="link">https://github.com/a1159645714/KM</a>
           </el-descriptions-item>
         </el-descriptions>
       </el-card>
