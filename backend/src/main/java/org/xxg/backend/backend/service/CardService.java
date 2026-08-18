@@ -190,9 +190,10 @@ public class CardService {
         if (isUpdated) {
             cardMapper.update(card);
             recordMachineSpecRedemptionIfNeeded(apiKeyEntity, machineCode, card);
+            // 仅在真实消费(首次激活/次数扣减)时通知 webhook 与买家邮件；
+            // 心跳/复核这类同机重复核销不再触发，避免每 30 分钟一封"卡密已使用"邮件轰炸
+            notifyCardConsumed(apiKeyEntity, card, ipAddress, cardKey, now);
         }
-
-        notifyCardConsumed(apiKeyEntity, card, ipAddress, cardKey, now);
 
         return card;
     }
@@ -414,6 +415,12 @@ public class CardService {
         }
         if (machineCode == null || machineCode.isBlank()) {
             throw new RuntimeException("已为该 API 密钥配置「同机同规格仅一次」限制，核销时必须提供机器码");
+        }
+        // 同一张卡在该机器上的重复核销（客户端心跳/续用）不应触发「同机同规格一次」限制；
+        // 该限制只针对"同一机器核销第二张同规格卡密"
+        if (card.getMachineCode() != null && !card.getMachineCode().isBlank()
+                && card.getMachineCode().equals(machineCode)) {
+            return;
         }
         if (apiKeyMachineSpecRedemptionMapper.exists(apiKey.getId(), machineCode, sk.get())) {
             throw new RuntimeException("在当前 API 密钥下，该机器码已使用过此规格卡密，无法重复核销");
