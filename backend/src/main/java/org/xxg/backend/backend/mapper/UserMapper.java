@@ -125,6 +125,11 @@ public class UserMapper {
         jdbcTemplate.update(sql, userId);
     }
 
+    public void updateTokens(Long userId, String accessToken, String refreshToken) {
+        String sql = "UPDATE users SET access_token = ?, refresh_token = ? WHERE id = ?";
+        jdbcTemplate.update(sql, accessToken, refreshToken, userId);
+    }
+
     /**
      * 更新用户Token
      */

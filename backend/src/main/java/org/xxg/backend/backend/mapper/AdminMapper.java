@@ -62,6 +62,11 @@ public class AdminMapper {
         jdbcTemplate.update(sql, adminId);
     }
 
+    public void updateTokens(Long adminId, String accessToken, String refreshToken) {
+        String sql = "UPDATE admins SET access_token = ?, refresh_token = ? WHERE id = ?";
+        jdbcTemplate.update(sql, accessToken, refreshToken, adminId);
+    }
+
     /**
      * 更新管理员信息
      */

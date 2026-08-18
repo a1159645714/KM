@@ -50,15 +50,16 @@ public class UserService {
         if (user == null) {
             throw new RuntimeException("用户不存在");
         }
-        
+
         // If user has a password, verify old password
         if (user.getPassword() != null && !user.getPassword().isEmpty()) {
              if (oldPassword == null || !PasswordUtil.verifyPasswordSimple(oldPassword, user.getPassword())) {
                 throw new RuntimeException("旧密码错误");
             }
         }
-        
+
         userMapper.updatePassword(user.getUsername(), PasswordUtil.hashPassword(newPassword));
+        userMapper.clearTokens(userId);
     }
 
     public List<SocialUser> getSocialBindings(Long userId) {

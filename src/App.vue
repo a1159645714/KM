@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import HomePage from './components/HomePage.vue'
 import OnlineUnbindPage from './components/OnlineUnbindPage.vue'
 import LoginForm from './components/loginform.vue'
@@ -27,13 +27,21 @@ const checkLoginStatus = async () => {
     // 1. 优先尝试恢复登录状态
     if (storedToken && storedUserInfo && storedIsLoggedIn === 'true') {
       const parsedUserInfo = JSON.parse(storedUserInfo)
+      const res = await authApi.getUserInfo()
+      if (!res.success || !res.data) {
+        throw new Error(res.message || '登录已失效')
+      }
+
       isLoggedIn.value = true
-      userInfo.value = parsedUserInfo
-      
+      userInfo.value = res.data
+      localStorage.setItem('userInfo', JSON.stringify(res.data))
+
       // 如果已登录，根据用户类型跳转到对应页面
       if (parsedUserInfo.role === 'admin') {
+        loginType.value = 'admin'
         currentPage.value = 'dashboard'
       } else {
+        loginType.value = 'user'
         currentPage.value = 'user'
       }
     } else {
@@ -55,8 +63,13 @@ const checkLoginStatus = async () => {
     }
   } catch (error) {
     console.error('检查登录状态失败:', error)
+    clearLocalAuthState()
     isLoggedIn.value = false
     userInfo.value = null
+    const path = window.location.pathname
+    const hash = window.location.hash
+    loginType.value = (path.includes('/admin') || hash.includes('admin')) ? 'admin' : 'user'
+    currentPage.value = 'login'
   } finally {
     loading.value = false
   }
@@ -111,8 +124,16 @@ const handleLogout = async () => {
   }
 }
 
+const clearLocalAuthState = () => {
+  localStorage.removeItem('userInfo')
+  localStorage.removeItem('isLoggedIn')
+  localStorage.removeItem('token')
+  localStorage.removeItem('refreshToken')
+}
+
 const handleAuthExpired = (event) => {
   const isAdmin = Boolean(event?.detail?.isAdmin)
+  clearLocalAuthState()
   isLoggedIn.value = false
   userInfo.value = null
   loginType.value = isAdmin ? 'admin' : 'user'
@@ -248,7 +269,7 @@ const handleOAuthCallback = async () => {
 onMounted(async () => {
   window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired)
   await checkMaintenance()
-  
+
   // 先检查 OAuth 回调
   const oauthSuccess = await handleOAuthCallback()
   if (!oauthSuccess) {
@@ -256,9 +277,13 @@ onMounted(async () => {
   } else {
     loading.value = false
   }
-  
+
   // 每30秒检查一次维护状态
   setInterval(checkMaintenance, 30000)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired)
 })
 </script>
 

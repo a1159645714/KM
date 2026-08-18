@@ -381,6 +381,9 @@ public class AuthService {
             throw new RuntimeException("管理员不存在");
         }
 
+        String previousUsername = admin.getUsername();
+        boolean passwordChanged = false;
+
         if (username != null && !username.isEmpty() && !username.equals(admin.getUsername())) {
             Admin existing = adminMapper.findByUsername(username);
             if (existing != null) {
@@ -391,6 +394,7 @@ public class AuthService {
 
         if (password != null && !password.isEmpty()) {
             admin.setPassword(PasswordUtil.hashPassword(password));
+            passwordChanged = true;
         }
 
         if (email != null && !email.isEmpty()) {
@@ -398,6 +402,14 @@ public class AuthService {
         }
 
         adminMapper.updateAdmin(admin);
+
+        if (passwordChanged) {
+            adminMapper.clearTokens(id);
+            clearLoginFailure("admin", admin.getUsername());
+            if (!previousUsername.equals(admin.getUsername())) {
+                clearLoginFailure("admin", previousUsername);
+            }
+        }
     }
 
     public Map<String, String> generateTotpSetup(Long adminId) {
