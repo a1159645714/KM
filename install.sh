@@ -3060,7 +3060,12 @@ EOF
              systemctl reload nginx
         fi
     else
-        nginx -t && systemctl restart nginx
+        if ! nginx -t; then
+            echo -e "${RED}Nginx 配置校验失败，已停止继续申请 HTTPS。请先修复当前配置。${NC}"
+            HTTPS_CHOICE="n"
+        else
+            systemctl restart nginx
+        fi
     fi
     
     # 4. 询问是否申请 HTTPS
@@ -3138,8 +3143,13 @@ server {
     }
 }
 EOF
-                systemctl start nginx
-                echo -e "${GREEN}Nginx SSL 配置已手动更新${NC}"
+                if nginx -t; then
+                    systemctl start nginx
+                    echo -e "${GREEN}Nginx SSL 配置已手动更新${NC}"
+                else
+                    echo -e "${RED}SSL Nginx 配置校验失败，已保留证书文件但未启动 Nginx，请手动检查 ${NGINX_CONF}${NC}"
+                    systemctl start nginx 2>/dev/null || true
+                fi
             else
                 echo -e "${RED}HTTPS 证书申请最终失败，保留 HTTP 配置${NC}"
                 systemctl start nginx
