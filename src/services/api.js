@@ -658,7 +658,8 @@ export const cardApi = {
   },
 
   async getApiKeyCards(apiKeyId) {
-    return await apiRequest(`/cards/apikey/${apiKeyId}`)
+    const response = await apiRequest(`/cards/apikey/${apiKeyId}`)
+    return response?.data ? response : { success: true, data: response }
   },
 
   async useCard(cardKey, machineCode = '', apiKey = '', deviceId = '', ipAddress = '') {
@@ -794,7 +795,8 @@ export const orderApi = {
         queryParams.set(key, String(value))
       }
     })
-    return await apiRequest(`/orders/admin/all${queryParams.toString() ? `?${queryParams.toString()}` : ''}`)
+    const response = await apiRequest(`/orders/admin/all${queryParams.toString() ? `?${queryParams.toString()}` : ''}`)
+    return response?.data ? response : { success: true, data: response }
   },
 
   async searchOrders(params = {}) {
