@@ -340,7 +340,8 @@ export const settingsApi = {
   },
 
   async getAllSettings() {
-    return await this.getSettings()
+    const response = await this.getSettings()
+    return response?.data ? response : { success: true, data: response }
   },
 
   async getPublicSettings() {

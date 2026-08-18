@@ -548,6 +548,7 @@ const saveSettings = async () => {
     const payload = { ...settings }
     payload.autoBackup = String(payload.autoBackup)
     payload.dataCompression = String(payload.dataCompression)
+    payload.payment_enabled = String(payload.payment_enabled)
     payload.qqLogin = String(payload.qqLogin)
     payload.authenticatorLogin = String(payload.authenticatorLogin)
     payload.aggregatedLogin = String(payload.aggregatedLogin)
