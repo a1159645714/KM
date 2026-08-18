@@ -473,8 +473,15 @@ export const onlineApi = {
 /**
  * 閻劍鍩涚粻锛勬倞API閺堝秴濮? */
 export const userApi = {
-  async getUsers() {
-    return await apiRequest('/admin/users');
+  async getUsers(page = 1, size = 10, keyword = '') {
+    const queryParams = new URLSearchParams({
+      page: String(page),
+      size: String(size)
+    })
+    if (keyword) {
+      queryParams.set('keyword', keyword)
+    }
+    return await apiRequest(`/admin/users?${queryParams.toString()}`)
   },
 
   async updateUserStatus(id, status) {

@@ -849,11 +849,12 @@ export default {
     const fetchUserProfile = async () => {
         try {
             const result = await userProfileApi.getProfile();
-            Object.assign(userInfo, result);
+            const profile = result?.data || result
+            Object.assign(userInfo, profile);
             Object.assign(profileForm, {
-                nickname: result.nickname,
-                email: result.email,
-                phone: result.phone
+                nickname: profile.nickname,
+                email: profile.email,
+                phone: profile.phone
             });
         } catch (error) {
             console.error('Failed to fetch user profile:', error);
