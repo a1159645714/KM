@@ -380,15 +380,17 @@ const loadChartData = async () => {
       statsApi.getCardUsageTrends(chartPeriod.value),
       statsApi.getUserActivityStats(chartPeriod.value)
     ])
-    
-    if (usageData && usageData.dates && usageData.counts) {
-      chartData.value.usage.labels = usageData.dates
-      chartData.value.usage.data = usageData.counts
+
+    const usagePayload = usageData?.data || usageData
+    if (usagePayload && usagePayload.dates && usagePayload.counts) {
+      chartData.value.usage.labels = usagePayload.dates
+      chartData.value.usage.data = usagePayload.counts
     }
-    
-    if (activityData) {
-      chartData.value.activity.active = activityData.active || 0
-      chartData.value.activity.inactive = activityData.inactive || 0
+
+    const activityPayload = activityData?.data || activityData
+    if (activityPayload) {
+      chartData.value.activity.active = activityPayload.active || 0
+      chartData.value.activity.inactive = activityPayload.inactive || 0
     }
   } catch (error) {
     console.error('加载图表数据失败:', error)
@@ -413,32 +415,36 @@ const loadServerStatus = async () => {
       monitorApi.getApiStatus()
     ])
 
+    const systemPayload = systemData?.data || systemData || {}
+    const databasePayload = databaseData?.data || databaseData || {}
+    const apiPayload = apiData?.data || apiData || {}
+
     // 更新系统状态
     systemStatus.value = {
-      status: systemData.status || 'offline',
-      cpu: systemData.cpuUsage || 0,
-      memory: systemData.memoryUsage || 0,
-      disk: systemData.diskUsage || 0,
+      status: systemPayload.status || 'online',
+      cpu: systemPayload.cpuUsage || 0,
+      memory: systemPayload.memoryUsage || 0,
+      disk: systemPayload.diskUsage || 0,
       loading: false
     }
 
     // 更新数据库状态
     databaseStatus.value = {
-      status: databaseData.status || 'offline',
-      connections: databaseData.activeConnections || 0,
-      qps: databaseData.qps || 0,
-      responseTime: databaseData.responseTime || 0,
-      size: databaseData.databaseSize || 'N/A',
+      status: databasePayload.status || 'online',
+      connections: databasePayload.activeConnections || 0,
+      qps: databasePayload.qps || 0,
+      responseTime: databasePayload.responseTime || 0,
+      size: databasePayload.databaseSize || 'N/A',
       loading: false
     }
 
     // 更新API状态
     apiStatus.value = {
-      status: apiData.status || 'offline',
-      totalRequests: apiData.requestCount || 0,
-      successRate: apiData.successRate || 0,
-      avgResponseTime: apiData.avgResponseTime || 0,
-      errorCount: apiData.errorCount || 0,
+      status: apiPayload.status || 'online',
+      totalRequests: apiPayload.requestCount || 0,
+      successRate: apiPayload.successRate || 0,
+      avgResponseTime: apiPayload.avgResponseTime || 0,
+      errorCount: apiPayload.errorCount || 0,
       loading: false
     }
 
