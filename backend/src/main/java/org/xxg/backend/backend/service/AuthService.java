@@ -560,6 +560,7 @@ public class AuthService {
         }
 
         userMapper.updatePassword(user.getUsername(), PasswordUtil.hashPassword(request.getPassword()));
+        userMapper.clearTokens(user.getId());
         verificationCodeMapper.deleteByEmailAndType(user.getEmail(), "reset_password");
     }
 
@@ -612,6 +613,7 @@ public class AuthService {
         }
 
         adminMapper.updateTotp(admin.getId(), null, false);
+        adminMapper.clearTokens(admin.getId());
         verificationCodeMapper.deleteByEmailAndType(email, "totp_recovery");
     }
 }
