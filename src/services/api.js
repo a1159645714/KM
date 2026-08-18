@@ -543,7 +543,7 @@ export const userApi = {
  * 閸椻€崇槕API閺堝秴濮? */
 export const cardApi = {
   async generateCards(data) {
-    return await apiRequest('/cards/admin/generate', {
+    return await apiRequest('/cards/admin/create', {
       method: 'POST',
       body: JSON.stringify(data)
     });
@@ -749,7 +749,8 @@ export const apiKeyApi = {
  * 鐠併垹宕烝PI閺堝秴濮? */
 export const pricingApi = {
   async getAllPricing() {
-    return await apiRequest('/pricing')
+    const response = await apiRequest('/pricing')
+    return response?.data ? response : { success: true, data: response }
   },
 
   async addPricing(data) {
