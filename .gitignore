@@ -14,8 +14,6 @@ dist-ssr
 .env
 .env.*
 !.env.example
-!.env.development
-!.env.production
 backend/keys/
 backend/backups/
 *.sql
