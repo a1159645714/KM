@@ -755,6 +755,7 @@ _mysql_diagnose_failed_start() {
 _mysql_enable_start_and_report() {
     local svc="$1"
     local pwfile="/root/.xxgkami_mysql_root_password"
+    local user_pwfile="${SUDO_USER:+/home/${SUDO_USER}/.xxgkami_mysql_root_password}"
     echo -e "${BLUE}━━━━━━━━ MySQL 安装完成 · 状态与版本 ━━━━━━━━${NC}"
     systemctl enable "$svc" 2>/dev/null || true
     systemctl start "$svc" 2>/dev/null || true
@@ -786,6 +787,9 @@ _mysql_enable_start_and_report() {
     if [ -f "$pwfile" ]; then
         echo -e "  ${GREEN}$(tr -d '\r\n' < "$pwfile")${NC}"
         echo -e "  文件: ${pwfile}（权限 600）"
+    elif [ -n "$user_pwfile" ] && [ -f "$user_pwfile" ]; then
+        echo -e "  ${GREEN}$(tr -d '\r\n' < "$user_pwfile")${NC}"
+        echo -e "  文件: ${user_pwfile}（权限 600）"
     else
         echo -e "  ${YELLOW}未写入密码文件。若系统使用 auth_socket，可用: sudo mysql -uroot${NC}"
     fi
@@ -793,9 +797,10 @@ _mysql_enable_start_and_report() {
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 }
 
-# 为 root@localhost 设置密码并写入 /root/.xxgkami_mysql_root_password（600）；优先使用本地 socket 免密
+# 为 root@localhost 设置密码并写入密码文件（root 与 sudo 用户各保留一份）；优先使用本地 socket 免密
 _mysql_set_root_password_or_show() {
     local pwfile="/root/.xxgkami_mysql_root_password"
+    local user_pwfile="${SUDO_USER:+/home/${SUDO_USER}/.xxgkami_mysql_root_password}"
     local NEW_PW
     if [ -f "$pwfile" ]; then
         echo -e "${YELLOW}[MySQL] 已存在密码文件 ${pwfile} ，未重复改密。${NC}"
@@ -822,6 +827,13 @@ _mysql_set_root_password_or_show() {
         umask 077
         printf '%s\n' "$NEW_PW" > "$pwfile"
         chmod 600 "$pwfile"
+        if [ -n "$user_pwfile" ]; then
+            install -d -m 700 "$(dirname "$user_pwfile")"
+            printf '%s\n' "$NEW_PW" > "$user_pwfile"
+            chown "$SUDO_USER":"$SUDO_USER" "$user_pwfile" 2>/dev/null || true
+            chmod 600 "$user_pwfile"
+        fi
+        DB_PASSWORD="$NEW_PW"
         return 0
     fi
     echo -e "${YELLOW}[MySQL] 当前 root 无法通过本地 socket 免密连接，未自动改密。可尝试: sudo mysql -uroot${NC}"
@@ -2459,11 +2471,17 @@ cd "$INSTALL_DIR" || exit 1
 echo -e "${YELLOW}[4/8] 配置数据库...${NC}"
 DB_NAME="kami"
 DB_USER="root"
-DB_PASSWORD="${DB_PASSWORD:-}"
+if [ -z "${DB_PASSWORD:-}" ] && [ -f /root/.xxgkami_mysql_root_password ]; then
+    DB_PASSWORD="$(tr -d '\r\n' < /root/.xxgkami_mysql_root_password)"
+elif [ -z "${DB_PASSWORD:-}" ] && [ -n "${SUDO_USER:-}" ] && [ -f "/home/${SUDO_USER}/.xxgkami_mysql_root_password" ]; then
+    DB_PASSWORD="$(tr -d '\r\n' < "/home/${SUDO_USER}/.xxgkami_mysql_root_password")"
+else
+    DB_PASSWORD="${DB_PASSWORD:-}"
+fi
 
 while true; do
     if [ -n "$DB_PASSWORD" ]; then
-        echo -e "${GREEN}已读取预设的 MySQL root 密码${NC}"
+        echo -e "${GREEN}已自动复用 MySQL root 密码${NC}"
     else
         read -r -s -p "请输入 MySQL root 密码: " DB_PASSWORD
         echo ""
