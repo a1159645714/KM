@@ -57,9 +57,9 @@ fi
 if ! command -v mvn >/dev/null 2>&1; then
     apt-get install -y maven
 fi
-if ! command -v node >/dev/null 2>&1 || [[ "$(node -p 'parseInt(process.versions.node, 10)')" -lt 18 ]]; then
-    log "Installing Node.js 20"
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+if ! command -v node >/dev/null 2>&1 || [[ "$(node -p 'parseInt(process.versions.node, 10)')" -lt 22 ]]; then
+    log "Installing Node.js 22 (Vite 7 requires Node 20.19+/22.12+)"
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
     apt-get install -y nodejs
 fi
 
@@ -128,7 +128,7 @@ fi
 log "Setting the administrator password"
 ADMIN_HASH="$(htpasswd -bnBC 12 '' "$ADMIN_PASSWORD" | tr -d '\r\n' | sed 's/^:\$2y\$/\$2a\$/')"
 mysql -u"${DB_USER}" -p"${DB_PASSWORD}" "$DB_NAME" -e \
-    "UPDATE admins SET password='${ADMIN_HASH}', access_token=NULL, refresh_token=NULL WHERE username='admin';"
+    "UPDATE admins SET password='${ADMIN_HASH}', access_token=NULL, refresh_token=NULL, totp_enabled=0, totp_secret=NULL WHERE username='admin';"
 
 log "Creating application environment"
 install -d -m 700 "$ENV_DIR"

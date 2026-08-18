@@ -21,7 +21,7 @@ bash /root/one-click-ip.sh
 
 脚本会自动完成：
 
-- 安装 Git、Nginx、MySQL、Redis、JDK 21、Maven、Node.js 20
+- 安装 Git、Nginx、MySQL、Redis、JDK 21、Maven、Node.js 22
 - 从 `https://github.com/a1159645714/KM.git` 的 `master` 分支拉取代码
 - 创建 MySQL 数据库和独立应用账号
 - 导入 `databaes/kami.sql`，失败时尝试 `kami_mysql56.sql`
