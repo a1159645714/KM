@@ -460,7 +460,8 @@ export const statsApi = {
   },
 
   async getDashboardStats() {
-    return await apiRequest('/stats/dashboard')
+    const response = await apiRequest('/stats/dashboard')
+    return response?.data || response || {}
   },
 
   async getCardUsageTrends(days = 7) {
