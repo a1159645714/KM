@@ -12,6 +12,9 @@ NC='\033[0m' # No Color
 
 # 国内 GitHub / 境外脚本拉取加速（用法：${GH_PROXY_CN}/<原始完整URL>，见 https://gh-proxy.com/ ）
 GH_PROXY_CN="${GH_PROXY_CN:-https://gh-proxy.com}"
+# 默认使用用户自己的公开 GitHub 仓库；也可运行前用 GIT_REPO 覆盖。
+GIT_REPO="${GIT_REPO:-https://github.com/a1159645714/KM.git}"
+GIT_BRANCH="${GIT_BRANCH:-master}"
 
 # 项目部署根目录：源码、maven 工作区、后端 JAR（宝塔常见 /www/wwwroot/xxgkami）
 : "${XXGKAMI_DEPLOY_ROOT:=/www/wwwroot/xxgkami}"
@@ -142,11 +145,11 @@ detect_network_region() {
     IS_CHINA=false
     if curl -s --connect-timeout 5 https://www.google.com >/dev/null 2>&1; then
         echo -e "${GREEN}检测到国外网络环境${NC}"
-        GIT_REPO="https://github.com/xiaoxiaoguai-yyds/xxgkami-pro.git"
+        GIT_REPO="${GIT_REPO:-https://github.com/a1159645714/KM.git}"
     else
         IS_CHINA=true
         echo -e "${GREEN}检测到国内网络环境${NC}"
-        GIT_REPO="https://gitee.com/xiaoxiaoguai-yyds/xxgkami-pro.git"
+        GIT_REPO="${GIT_REPO:-https://github.com/a1159645714/KM.git}"
     fi
 }
 
@@ -2373,7 +2376,7 @@ if [ -d "$INSTALL_DIR" ]; then
         fi
 
         echo -e "${YELLOW}重新克隆项目...${NC}"
-        if ! git clone $GIT_REPO "$INSTALL_DIR"; then
+        if ! git clone --branch "$GIT_BRANCH" "$GIT_REPO" "$INSTALL_DIR"; then
             echo -e "${RED}git clone 失败，请检查网络与仓库地址。${NC}"
             exit 1
         fi
@@ -2400,7 +2403,7 @@ if [ -d "$INSTALL_DIR" ]; then
         git pull
     fi
 else
-    if ! git clone $GIT_REPO "$INSTALL_DIR"; then
+    if ! git clone --branch "$GIT_BRANCH" "$GIT_REPO" "$INSTALL_DIR"; then
         echo -e "${RED}git clone 失败。若提示目录非空，请在宝塔对 .user.ini 执行 chattr -i 后删除目录再试。${NC}"
         exit 1
     fi
@@ -2786,7 +2789,11 @@ fi
 NGINX_CONF="/etc/nginx/conf.d/xxgkami-domain.conf"
 
 # 询问是否绑定域名
-read -p "是否需要绑定域名？(y/n): " BIND_DOMAIN_CHOICE
+BIND_DOMAIN_CHOICE="${BIND_DOMAIN_CHOICE:-n}"
+if [ -t 0 ]; then
+    read -r -p "是否需要绑定域名？(y/n，默认 n，直接使用服务器 IP): " BIND_DOMAIN_INPUT
+    [ -n "$BIND_DOMAIN_INPUT" ] && BIND_DOMAIN_CHOICE="$BIND_DOMAIN_INPUT"
+fi
 
 if [ "$BIND_DOMAIN_CHOICE" == "y" ] || [ "$BIND_DOMAIN_CHOICE" == "Y" ]; then
     # 1. 获取服务器公网 IP (优先 IPv4)
@@ -3070,6 +3077,9 @@ EOF
         echo -e "${RED}Nginx 配置语法有误，请检查配置文件${NC}"
     fi
 fi
+
+# 无域名/IP 部署不申请证书，避免 HTTPS 向导阻塞安装。
+HTTPS_CHOICE="n"
 
 # 8. 安装管理脚本
 echo -e "${YELLOW}[8/9] 安装 xxgkami 管理命令...${NC}"
