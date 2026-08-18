@@ -1892,6 +1892,7 @@ while true; do
             git pull || true
             
             DB_NAME="kami"
+            update_failed=false
 
             _xxgkami_embed_resolve_db_credentials_for_update
 
@@ -1954,14 +1955,15 @@ while true; do
                             TABLE_EXISTS=\$(mysql -u"\$DB_USER" -p"\$_EPW" -N -B -e "SELECT count(*) FROM information_schema.tables WHERE table_schema = '\$DB_NAME' AND table_name = '\$TABLE';")
                             if [ "\$TABLE_EXISTS" -eq 0 ]; then
                                 echo -e "\${GREEN}[数据库] 新增表 \$TABLE ，正在写入…\${NC}"
-                                mysqldump -u"\$DB_USER" -p"\$_EPW" "\$TEMP_DB" "\$TABLE" | mysql -u"\$DB_USER" -p"\$_EPW" "\$DB_NAME"
+                                mysqldump -u"\$DB_USER" -p"\$_EPW" "\$TEMP_DB" "\$TABLE" | mysql -u"\$DB_USER" -p"\$_EPW" "\$DB_NAME" || { update_failed=true; break; }
                             else
-                                mysqldump -u"\$DB_USER" -p"\$_EPW" --no-create-info --insert-ignore --complete-insert "\$TEMP_DB" "\$TABLE" | mysql -u"\$DB_USER" -p"\$_EPW" "\$DB_NAME"
+                                mysqldump -u"\$DB_USER" -p"\$_EPW" --no-create-info --insert-ignore --complete-insert "\$TEMP_DB" "\$TABLE" | mysql -u"\$DB_USER" -p"\$_EPW" "\$DB_NAME" || { update_failed=true; break; }
                             fi
                         done
                         echo -e "\${GREEN}[数据库] 智能更新完成。\${NC}"
                     else
                         echo -e "\${RED}[数据库] 脚本导入临时库失败（\$SQL_FILE）。\${NC}"
+                        update_failed=true
                     fi
                     echo -e "\${BLUE}[数据库] 删除临时库 \$TEMP_DB …\${NC}"
                     mysql -u"\$DB_USER" -p"\$_EPW" -e "DROP DATABASE \$TEMP_DB;" 2>/dev/null || true
@@ -1969,12 +1971,20 @@ while true; do
             elif [ "\$_ACT" = "drop_import" ] || [ "\$_ACT" = "direct" ]; then
                 if [ "\$_ACT" = "drop_import" ]; then
                     echo -e "\${YELLOW}[数据库] 删除原库并重建 \$DB_NAME …\${NC}"
-                    mysql -u"\$DB_USER" -p"\$_EPW" -e "DROP DATABASE IF EXISTS \$DB_NAME; CREATE DATABASE \$DB_NAME DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;" || echo -e "\${RED}[数据库] DROP/CREATE 失败。\${NC}"
+                    mysql -u"\$DB_USER" -p"\$_EPW" -e "DROP DATABASE IF EXISTS \$DB_NAME; CREATE DATABASE \$DB_NAME DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;" || { echo -e "\${RED}[数据库] DROP/CREATE 失败。\${NC}"; update_failed=true; }
                 else
                     mysql -u"\$DB_USER" -p"\$_EPW" -e "CREATE DATABASE IF NOT EXISTS \$DB_NAME DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;" 2>/dev/null || true
                 fi
                 echo -e "\${GREEN}[数据库] 全量导入 \$SQL_FILE → \$DB_NAME …\${NC}"
-                mysql -u"\$DB_USER" -p"\$_EPW" "\$DB_NAME" < "\$SQL_FILE" || echo -e "\${RED}[数据库] 全量导入失败。\${NC}"
+                if ! mysql -u"\$DB_USER" -p"\$_EPW" "\$DB_NAME" < "\$SQL_FILE"; then
+                    echo -e "\${RED}[数据库] 全量导入失败。\${NC}"
+                    update_failed=true
+                fi
+            fi
+
+            if [ "\$update_failed" = true ]; then
+                echo -e "\${RED}[更新] 数据库阶段失败，已停止本次更新。\${NC}"
+                continue
             fi
             
             _xxgkami_embed_refresh_backend_datasource_env "\$DB_USER" "\$_EPW"
@@ -3644,6 +3654,7 @@ while true; do
             git pull || true
             
             DB_NAME="kami"
+            update_failed=false
 
             _xxgkami_embed_resolve_db_credentials_for_update
 
@@ -3706,14 +3717,15 @@ while true; do
                             TABLE_EXISTS=\$(mysql -u"\$DB_USER" -p"\$_EPW" -N -B -e "SELECT count(*) FROM information_schema.tables WHERE table_schema = '\$DB_NAME' AND table_name = '\$TABLE';")
                             if [ "\$TABLE_EXISTS" -eq 0 ]; then
                                 echo -e "\${GREEN}[数据库] 新增表 \$TABLE ，正在写入…\${NC}"
-                                mysqldump -u"\$DB_USER" -p"\$_EPW" "\$TEMP_DB" "\$TABLE" | mysql -u"\$DB_USER" -p"\$_EPW" "\$DB_NAME"
+                                mysqldump -u"\$DB_USER" -p"\$_EPW" "\$TEMP_DB" "\$TABLE" | mysql -u"\$DB_USER" -p"\$_EPW" "\$DB_NAME" || { update_failed=true; break; }
                             else
-                                mysqldump -u"\$DB_USER" -p"\$_EPW" --no-create-info --insert-ignore --complete-insert "\$TEMP_DB" "\$TABLE" | mysql -u"\$DB_USER" -p"\$_EPW" "\$DB_NAME"
+                                mysqldump -u"\$DB_USER" -p"\$_EPW" --no-create-info --insert-ignore --complete-insert "\$TEMP_DB" "\$TABLE" | mysql -u"\$DB_USER" -p"\$_EPW" "\$DB_NAME" || { update_failed=true; break; }
                             fi
                         done
                         echo -e "\${GREEN}[数据库] 智能更新完成。\${NC}"
                     else
                         echo -e "\${RED}[数据库] 脚本导入临时库失败（\$SQL_FILE）。\${NC}"
+                        update_failed=true
                     fi
                     echo -e "\${BLUE}[数据库] 删除临时库 \$TEMP_DB …\${NC}"
                     mysql -u"\$DB_USER" -p"\$_EPW" -e "DROP DATABASE \$TEMP_DB;" 2>/dev/null || true
@@ -3721,12 +3733,20 @@ while true; do
             elif [ "\$_ACT" = "drop_import" ] || [ "\$_ACT" = "direct" ]; then
                 if [ "\$_ACT" = "drop_import" ]; then
                     echo -e "\${YELLOW}[数据库] 删除原库并重建 \$DB_NAME …\${NC}"
-                    mysql -u"\$DB_USER" -p"\$_EPW" -e "DROP DATABASE IF EXISTS \$DB_NAME; CREATE DATABASE \$DB_NAME DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;" || echo -e "\${RED}[数据库] DROP/CREATE 失败。\${NC}"
+                    mysql -u"\$DB_USER" -p"\$_EPW" -e "DROP DATABASE IF EXISTS \$DB_NAME; CREATE DATABASE \$DB_NAME DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;" || { echo -e "\${RED}[数据库] DROP/CREATE 失败。\${NC}"; update_failed=true; }
                 else
                     mysql -u"\$DB_USER" -p"\$_EPW" -e "CREATE DATABASE IF NOT EXISTS \$DB_NAME DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;" 2>/dev/null || true
                 fi
                 echo -e "\${GREEN}[数据库] 全量导入 \$SQL_FILE → \$DB_NAME …\${NC}"
-                mysql -u"\$DB_USER" -p"\$_EPW" "\$DB_NAME" < "\$SQL_FILE" || echo -e "\${RED}[数据库] 全量导入失败。\${NC}"
+                if ! mysql -u"\$DB_USER" -p"\$_EPW" "\$DB_NAME" < "\$SQL_FILE"; then
+                    echo -e "\${RED}[数据库] 全量导入失败。\${NC}"
+                    update_failed=true
+                fi
+            fi
+
+            if [ "\$update_failed" = true ]; then
+                echo -e "\${RED}[更新] 数据库阶段失败，已停止本次更新。\${NC}"
+                continue
             fi
             
             _xxgkami_embed_refresh_backend_datasource_env "\$DB_USER" "\$_EPW"
