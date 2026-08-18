@@ -2923,6 +2923,9 @@ After=syslog.target network.target mysql.service mysqld.service mariadb.service
 [Service]
 User=root
 EnvironmentFile=/etc/xxgkami/backend-datasource.env
+# 工作目录固定为源码 backend 目录：KeyManagerService 相对路径生成/读取 keys/（ecc_pub.key 等），
+# 不设该行时 systemd 默认 cwd=/，密钥会被生成到 /keys/，导致更新备份与文档路径全部错位
+WorkingDirectory=$INSTALL_DIR/backend
 # JVM 参数必须在 -jar 之前，否则 Java 会把 -D/-X 当成 JAR 路径而立刻失败（导致 Nginx 502）
 ExecStart=$JAVA_PATH $JAVA_OPTS -jar $ABS_JAR_PATH
 SuccessExitStatus=143
