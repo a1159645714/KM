@@ -176,7 +176,7 @@ public class AuthService {
             return;
         }
         String key = "auth:lock:" + scope + ":" + username;
-        Long lockUntil = redissonClient.getBucket(key).get();
+        Long lockUntil = redissonClient.<Long>getBucket(key).get();
         long now = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
         if (lockUntil != null && lockUntil > now) {
             throw new RuntimeException("登录失败次数过多，请稍后再试");
