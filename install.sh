@@ -2691,7 +2691,10 @@ print(bcrypt.hashpw(os.environ['XXGKAMI_ADMIN_PASSWORD_RAW'].encode(), bcrypt.ge
 PY
 )"
     unset XXGKAMI_ADMIN_PASSWORD_RAW
-    mysql -u"$DB_USER" -p"$MYSQL_EFFECTIVE_PASSWORD" "$DB_NAME" -e "UPDATE admins SET password='${ADMIN_HASH}', totp_enabled=0, totp_secret=NULL, access_token=NULL, refresh_token=NULL WHERE username='admin';"
+    if ! mysql -u"$DB_USER" -p"$MYSQL_EFFECTIVE_PASSWORD" "$DB_NAME" -e "UPDATE admins SET password='${ADMIN_HASH}', totp_enabled=0, totp_secret=NULL, access_token=NULL, refresh_token=NULL WHERE username='admin';"; then
+        echo -e "${RED}管理员密码写入失败，已中止安装。${NC}"
+        exit 1
+    fi
     if ! _xxgkami_verify_admin_password "$MYSQL_EFFECTIVE_PASSWORD" "$ADMIN_PASSWORD"; then
         echo -e "${RED}管理员密码校验失败，已中止安装，请检查数据库写入与 bcrypt 环境。${NC}"
         exit 1
@@ -3945,7 +3948,7 @@ echo -e "${BLUE}================================================${NC}"
 echo -e "${GREEN}      部署流程结束      ${NC}"
 echo -e "${BLUE}================================================${NC}"
 # 构建访问地址
-CURRENT_IP=$(curl -s ifconfig.me)
+CURRENT_IP=$(curl -s -4 --connect-timeout 3 ifconfig.me 2>/dev/null || curl -s --connect-timeout 3 ifconfig.me 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo 127.0.0.1)
 if [ -n "$USER_DOMAIN" ]; then
     PROTOCOL="http"
     if [ "$HTTPS_CHOICE" == "y" ] || [ "$HTTPS_CHOICE" == "Y" ]; then
