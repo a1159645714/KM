@@ -575,7 +575,7 @@ export const cardApi = {
   },
 
   async deleteCard(id) {
-    return await apiRequest(`/cards/admin/${id}`, {
+    return await apiRequest(`/cards/${id}`, {
       method: 'DELETE'
     });
   },
