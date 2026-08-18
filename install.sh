@@ -2667,6 +2667,7 @@ if [ -f "$SQL_FILE" ]; then
             echo -e "${GREEN}全量导入完成。${NC}"
         else
             echo -e "${RED}全量导入失败，请检查 SQL 与服务端兼容性。${NC}"
+            exit 1
         fi
     fi
 
@@ -2742,7 +2743,10 @@ echo -e "${GREEN}已设置 spring.datasource.username=root，密码已写入（�
 echo -e "${YELLOW}[5/8-2] Maven 打包（mvn clean package）…${NC}"
 
 _xxgkami_ensure_java_home || exit 1
-mvn clean package -DskipTests
+if ! mvn clean package -DskipTests; then
+    echo -e "${RED}Maven 打包失败，安装中止。${NC}"
+    exit 1
+fi
 
 # 将可运行 fat JAR 固定复制到项目部署根目录（供 systemd 与宝塔任务引用）
 mkdir -p "$XXGKAMI_DEPLOY_ROOT"
@@ -2823,22 +2827,22 @@ fi
 if [ "$IS_CHINA" = true ]; then
     echo -e "${YELLOW}使用 npmmirror 镜像...${NC}"
     npm config set registry https://registry.npmmirror.com/
-    npm install
+    npm install || { echo -e "${RED}npm install 失败，安装中止。${NC}"; exit 1; }
 else
     echo -e "${YELLOW}使用官方 npm 源...${NC}"
     npm config set registry https://registry.npmjs.org/
-    npm install
+    npm install || { echo -e "${RED}npm install 失败，安装中止。${NC}"; exit 1; }
 fi
 # 构建 (支持多环境)
 if [ "$DEPLOY_ENV" == "dev" ]; then
     # 假设 package.json 中有 build:dev，如果没有则使用默认 build
     if grep -q "build:dev" package.json; then
-        npm run build:dev
+        npm run build:dev || { echo -e "${RED}npm run build:dev 失败，安装中止。${NC}"; exit 1; }
     else
-        npm run build
+        npm run build || { echo -e "${RED}npm run build 失败，安装中止。${NC}"; exit 1; }
     fi
 else
-    npm run build
+    npm run build || { echo -e "${RED}npm run build 失败，安装中止。${NC}"; exit 1; }
 fi
 
 # 部署到 Nginx Web 目录（与环境变量 XXGKAMI_WEB_ROOT 一致）
