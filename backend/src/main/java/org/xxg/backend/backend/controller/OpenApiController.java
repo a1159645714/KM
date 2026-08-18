@@ -1,14 +1,22 @@
 package org.xxg.backend.backend.controller;
 
 import jakarta.servlet.http.HttpServletRequest;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.xxg.backend.backend.entity.ApiKey;
 import org.xxg.backend.backend.service.ApiKeyService;
 import org.xxg.backend.backend.service.CardService;
+import org.xxg.backend.backend.service.KeyManagerService;
+import org.xxg.backend.backend.util.AdvancedCryptoUtil;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 @RestController
@@ -16,14 +24,26 @@ import java.util.Map;
 @CrossOrigin
 public class OpenApiController {
 
+    private static final Logger log = LoggerFactory.getLogger(OpenApiController.class);
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
     private final ApiKeyService apiKeyService;
     private final CardService cardService;
     private final org.xxg.backend.backend.util.CustomCardObfuscator customCardObfuscator;
+    private final KeyManagerService keyManagerService;
+    private final AdvancedCryptoUtil advancedCryptoUtil;
 
-    public OpenApiController(ApiKeyService apiKeyService, CardService cardService, org.xxg.backend.backend.util.CustomCardObfuscator customCardObfuscator) {
+    public OpenApiController(
+            ApiKeyService apiKeyService,
+            CardService cardService,
+            org.xxg.backend.backend.util.CustomCardObfuscator customCardObfuscator,
+            KeyManagerService keyManagerService,
+            AdvancedCryptoUtil advancedCryptoUtil) {
         this.apiKeyService = apiKeyService;
         this.cardService = cardService;
         this.customCardObfuscator = customCardObfuscator;
+        this.keyManagerService = keyManagerService;
+        this.advancedCryptoUtil = advancedCryptoUtil;
     }
 
     /**
@@ -96,12 +116,54 @@ public class OpenApiController {
             response.put("code", 200);
             response.put("message", "Card used successfully");
             response.put("success", true);
+            attachSignature(response, cardKey, machineCode);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             response.put("code", 400);
             response.put("message", e.getMessage());
             response.put("success", false);
             return ResponseEntity.badRequest().body(response);
+        }
+    }
+
+    /**
+     * 对核销成功响应附加 ECC 签名,供客户端校验,防止本地伪造成功响应。
+     * 签名载荷字段顺序固定(success, machine_code, card_sha256, timestamp),
+     * 使用 LinkedHashMap + 单例 ObjectMapper 保证序列化结果稳定。
+     */
+    private void attachSignature(Map<String, Object> response, String cardKey, String machineCode) {
+        try {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("success", true);
+            payload.put("machine_code", machineCode == null ? "" : machineCode);
+            payload.put("card_sha256", sha256Hex(cardKey));
+            payload.put("timestamp", System.currentTimeMillis() / 1000);
+            String canonical = MAPPER.writeValueAsString(payload);
+            String signature = advancedCryptoUtil.sign(
+                    canonical,
+                    keyManagerService.getEccKeyPair().getPrivate()
+            );
+            Map<String, Object> sign = new LinkedHashMap<>();
+            sign.put("payload", canonical);
+            sign.put("signature", signature);
+            response.put("sign", sign);
+        } catch (Exception e) {
+            // 核销已成功,签名失败只影响新版客户端校验;只记一条 warning,不打裸堆栈
+            log.warn("attachSignature failed: {}", e.getMessage());
+        }
+    }
+
+    private String sha256Hex(String value) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            for (byte b : hash) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
     }
 
