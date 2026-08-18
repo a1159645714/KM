@@ -267,10 +267,13 @@ export const authApi = {
     });
   },
 
-  async enableTotp(data) {
+  async enableTotp(idOrData, secret, code) {
+    const payload = typeof idOrData === 'object'
+      ? idOrData
+      : { id: idOrData, secret, code }
     return await apiRequest('/auth/totp/enable', {
       method: 'POST',
-      body: JSON.stringify(data)
+      body: JSON.stringify(payload)
     });
   },
 
@@ -288,6 +291,10 @@ export const authApi = {
     });
   },
 
+  async sendResetCode(username, email) {
+    return await this.sendResetPasswordCode(username, email)
+  },
+
   async resetPassword(data) {
     return await apiRequest('/auth/reset-password', {
       method: 'POST',
@@ -303,20 +310,22 @@ export const authApi = {
   },
 
   async disableTotpByRecoveryCode(username, recoveryCode) {
-    return await apiRequest('/auth/totp/recovery-disable', {
+    return await apiRequest('/auth/totp/disable-by-recovery', {
       method: 'POST',
-      body: JSON.stringify({ username, recoveryCode })
+      body: JSON.stringify({ username, code: recoveryCode })
     });
+  },
+
+  async disableTotpByRecovery(username, recoveryCode) {
+    return await this.disableTotpByRecoveryCode(username, recoveryCode)
   },
 
   async getBindToken() {
-    return await apiRequest('/auth/bind/token', {
-      method: 'POST'
-    });
+    return await apiRequest('/auth/bind/token');
   },
 
   async validateBindToken(userId, token) {
-    return await apiRequest('/auth/register-bind/validate', {
+    return await apiRequest('/auth/bind/validate', {
       method: 'POST',
       body: JSON.stringify({ userId, token })
     });
