@@ -58,7 +58,10 @@ public class ApiKeyService {
         
         apiKey.setStatus(1);
         
-        apiKeyMapper.insert(apiKey);
+        Long generatedId = apiKeyMapper.insert(apiKey);
+        if (generatedId != null) {
+            apiKey.setId(generatedId);
+        }
         return apiKey;
     }
 

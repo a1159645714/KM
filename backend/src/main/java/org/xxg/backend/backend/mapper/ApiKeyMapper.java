@@ -2,13 +2,17 @@ package org.xxg.backend.backend.mapper;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.support.GeneratedKeyHolder;
+import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
 import org.xxg.backend.backend.entity.ApiKey;
 import org.xxg.backend.backend.entity.User;
 
 import jakarta.annotation.PostConstruct;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -187,21 +191,25 @@ public class ApiKeyMapper {
         jdbcTemplate.update(sql, id);
     }
 
-    public void insert(ApiKey apiKey) {
+    public Long insert(ApiKey apiKey) {
         String sql = "INSERT INTO api_keys (key_name, api_key, key_value, name, description, status, create_time, webhook_config, enable_card_encryption, require_machine_code, machine_spec_once_config) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-        jdbcTemplate.update(sql, 
-            apiKey.getKeyName(), 
-            apiKey.getApiKey(), 
-            apiKey.getKeyValue(), 
-            apiKey.getName(), 
-            apiKey.getDescription(), 
-            apiKey.getStatus(), 
-            LocalDateTime.now(),
-            apiKey.getWebhookConfig(),
-            Boolean.TRUE.equals(apiKey.getEnableCardEncryption()) ? 1 : 0,
-            Boolean.TRUE.equals(apiKey.getRequireMachineCode()) ? 1 : 0,
-            apiKey.getMachineSpecOnceConfig()
-        );
+        KeyHolder keyHolder = new GeneratedKeyHolder();
+        jdbcTemplate.update(connection -> {
+            java.sql.PreparedStatement ps = connection.prepareStatement(sql, java.sql.Statement.RETURN_GENERATED_KEYS);
+            ps.setString(1, apiKey.getKeyName());
+            ps.setString(2, apiKey.getApiKey());
+            ps.setString(3, apiKey.getKeyValue());
+            ps.setString(4, apiKey.getName());
+            ps.setString(5, apiKey.getDescription());
+            ps.setInt(6, apiKey.getStatus());
+            ps.setTimestamp(7, java.sql.Timestamp.valueOf(LocalDateTime.now()));
+            ps.setString(8, apiKey.getWebhookConfig());
+            ps.setInt(9, Boolean.TRUE.equals(apiKey.getEnableCardEncryption()) ? 1 : 0);
+            ps.setInt(10, Boolean.TRUE.equals(apiKey.getRequireMachineCode()) ? 1 : 0);
+            ps.setString(11, apiKey.getMachineSpecOnceConfig());
+            return ps;
+        }, keyHolder);
+        return keyHolder.getKey() != null ? keyHolder.getKey().longValue() : null;
     }
 
     public void update(ApiKey apiKey) {
