@@ -492,7 +492,12 @@ export const userApi = {
     if (keyword) {
       queryParams.set('keyword', keyword)
     }
-    return await apiRequest(`/admin/users?${queryParams.toString()}`)
+    const response = await apiRequest(`/admin/users?${queryParams.toString()}`)
+    return {
+      ...response,
+      users: response?.users || response?.data?.users || [],
+      total: response?.total || response?.data?.total || 0
+    }
   },
 
   async updateUserStatus(id, status) {
@@ -554,7 +559,8 @@ export const cardApi = {
   },
 
   async getAllCards() {
-    return await apiRequest('/cards/admin/all')
+    const response = await apiRequest('/cards/admin/all')
+    return response?.data ? response : { success: true, data: response }
   },
 
   async getUserCards(userId) {
