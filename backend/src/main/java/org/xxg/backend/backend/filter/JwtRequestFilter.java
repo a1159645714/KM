@@ -10,40 +10,19 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
-import org.xxg.backend.backend.entity.Admin;
-import org.xxg.backend.backend.entity.User;
-import org.xxg.backend.backend.mapper.AdminMapper;
-import org.xxg.backend.backend.mapper.UserMapper;
 import org.xxg.backend.backend.util.JwtUtil;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 @Component
 public class JwtRequestFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
-    private final AdminMapper adminMapper;
-    private final UserMapper userMapper;
 
-    public JwtRequestFilter(JwtUtil jwtUtil, AdminMapper adminMapper, UserMapper userMapper) {
+    public JwtRequestFilter(JwtUtil jwtUtil) {
         this.jwtUtil = jwtUtil;
-        this.adminMapper = adminMapper;
-        this.userMapper = userMapper;
-    }
-
-    private boolean isPersistedTokenValid(String username, String role, String jwt) {
-        if (username == null || role == null || jwt == null) {
-            return false;
-        }
-        if ("admin".equals(role)) {
-            Admin admin = adminMapper.findByUsername(username);
-            return admin != null && jwt.equals(admin.getAccessToken());
-        }
-        User user = userMapper.findByUsername(username);
-        return user != null && jwt.equals(user.getAccessToken());
     }
 
     @Override
@@ -66,8 +45,10 @@ public class JwtRequestFilter extends OncePerRequestFilter {
             }
         }
 
-        if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-            if (jwtUtil.validateToken(jwt, username) && isPersistedTokenValid(username, role, jwt)) {
+        // 无状态 JWT 校验（签名 + 未过期）。不再与数据库 access_token 做等值比较：
+        // 每次登录都会覆盖该字段，导致同一账号只允许一个有效会话（浏览器与 API 客户端互相踢下线）。
+        if (username != null && jwt != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+            if (jwtUtil.validateToken(jwt, username)) {
                 List<SimpleGrantedAuthority> authorities = new ArrayList<>();
                 if (role != null) {
                     authorities.add(new SimpleGrantedAuthority("ROLE_" + role.toUpperCase()));
