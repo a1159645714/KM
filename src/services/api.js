@@ -775,14 +775,15 @@ export const pricingApi = {
 
 export const orderApi = {
   async createOrder(orderData) {
-    return await apiRequest('/orders/create', {
+    return await apiRequest('/orders', {
       method: 'POST',
       body: JSON.stringify(orderData)
     });
   },
 
   async getOrders() {
-    return await apiRequest('/orders');
+    const response = await apiRequest('/orders')
+    return response?.data || response || []
   },
 
   async getAllOrders(params = {}) {
