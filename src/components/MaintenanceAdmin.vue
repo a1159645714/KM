@@ -71,6 +71,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { ElMessage } from 'element-plus'
 import { maintenanceApi } from '../services/api.js'
 
 const loading = ref(false)
@@ -114,15 +115,15 @@ const saveSettings = async () => {
   try {
     const res = await maintenanceApi.updateSettings(settings.value)
     if (res.success) {
-      alert('设置保存成功')
+      ElMessage.success('设置保存成功')
       // 重新加载以确保同步
       loadSettings()
     } else {
-      alert('保存失败: ' + res.message)
+      ElMessage.error('保存失败: ' + res.message)
     }
   } catch (error) {
     console.error('保存失败:', error)
-    alert('保存失败')
+    ElMessage.error('保存失败')
   } finally {
     loading.value = false
   }

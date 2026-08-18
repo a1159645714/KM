@@ -80,6 +80,7 @@
 
 <script setup>
 import { ref, computed } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { cardApi } from '../services/api.js'
 
 const emit = defineEmits(['backHome', 'showLogin'])
@@ -127,7 +128,13 @@ async function unbind() {
     errorMsg.value = '未获取到当前绑定的机器码，无法解绑'
     return
   }
-  if (!window.confirm('确定要解绑当前设备吗？解绑后可在新设备上重新绑定。')) {
+  try {
+    await ElMessageBox.confirm('确定要解绑当前设备吗？解绑后可在新设备上重新绑定。', '提示', {
+      type: 'warning',
+      confirmButtonText: '确定',
+      cancelButtonText: '取消'
+    })
+  } catch {
     return
   }
   loadingUnbind.value = true
@@ -135,7 +142,7 @@ async function unbind() {
   try {
     const res = await cardApi.publicMachineUnbind(key, machineCode)
     if (res.success) {
-      window.alert(res.message || '解绑成功')
+      ElMessage.success(res.message || '解绑成功')
       await query()
     } else {
       errorMsg.value = res.message || '解绑失败'

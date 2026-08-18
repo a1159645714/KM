@@ -139,6 +139,7 @@
 
 <script setup>
 import { reactive, ref, onMounted } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { settingsApi } from '../services/api.js'
 
 // 邮箱设置
@@ -171,11 +172,9 @@ const emailTemplates = reactive({
 const testEmail = ref('')
 const loading = ref(false)
 
-// 显示提示消息
+// 显示提示消息（Element Plus 顶部浮动通知，自动消失）
 const showToast = (message, type = 'info') => {
-  // 这里可以使用更高级的Toast组件，目前使用简单的alert
-  // 实际项目中建议使用Element Plus或其他UI库的Message组件
-  alert(`${type === 'success' ? '成功' : type === 'error' ? '错误' : '提示'}: ${message}`)
+  ElMessage({ message, type })
 }
 
 // 加载设置
@@ -261,8 +260,17 @@ const saveSettings = async () => {
 }
 
 // 重置设置
-const resetSettings = () => {
-  if (confirm('确定要重置所有通知设置吗？这将恢复到默认配置。')) {
+const resetSettings = async () => {
+  try {
+    await ElMessageBox.confirm('确定要重置所有通知设置吗？这将恢复到默认配置。', '提示', {
+      type: 'warning',
+      confirmButtonText: '确定',
+      cancelButtonText: '取消'
+    })
+  } catch {
+    return
+  }
+  {
     // 重置邮箱设置
     Object.assign(emailSettings, {
       smtpServer: 'smtp.qq.com',

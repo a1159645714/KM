@@ -182,6 +182,7 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { userApi } from '../services/api.js'
 
 const users = ref([])
@@ -228,7 +229,7 @@ const fetchUsers = async () => {
     total.value = res.total
   } catch (error) {
     console.error('Failed to fetch users:', error)
-    alert('获取用户列表失败: ' + error.message)
+    ElMessage.error('获取用户列表失败: ' + error.message)
   } finally {
     loading.value = false
   }
@@ -288,10 +289,10 @@ const submitForm = async () => {
     }
     closeModal()
     fetchUsers()
-    alert(isEditing.value ? '用户更新成功' : '用户创建成功')
+    ElMessage.success(isEditing.value ? '用户更新成功' : '用户创建成功')
   } catch (error) {
     console.error('Submit failed:', error)
-    alert('操作失败: ' + error.message)
+    ElMessage.error('操作失败: ' + error.message)
   } finally {
     loading.value = false
   }
@@ -301,21 +302,30 @@ const toggleUserStatus = async (id, status) => {
   try {
     await userApi.updateUserStatus(id, status)
     fetchUsers()
+    ElMessage.success('状态已更新')
   } catch (error) {
     console.error('Status update failed:', error)
-    alert('状态更新失败: ' + error.message)
+    ElMessage.error('状态更新失败: ' + error.message)
   }
 }
 
 const handleDeleteUser = async (id) => {
-  if (!confirm('确定要删除该用户吗？此操作不可恢复。')) return
+  try {
+    await ElMessageBox.confirm('确定要删除该用户吗？此操作不可恢复。', '确认删除', {
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消'
+    })
+  } catch {
+    return
+  }
   try {
     await userApi.deleteUser(id)
     fetchUsers()
-    alert('用户已删除')
+    ElMessage.success('用户已删除')
   } catch (error) {
     console.error('Delete failed:', error)
-    alert('删除失败: ' + error.message)
+    ElMessage.error('删除失败: ' + error.message)
   }
 }
 </script>

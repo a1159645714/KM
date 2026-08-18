@@ -339,6 +339,7 @@
 
 <script setup>
 import { ref, reactive, onMounted, computed } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { settingsApi, maintenanceApi, authApi } from '../services/api.js'
 import { copyToClipboard as copyToClipboardUtil } from '../utils/clipboard.js'
 
@@ -430,7 +431,15 @@ const enableTotp = async () => {
 }
 
 const disableTotp = async () => {
-    if (!confirm('确定要禁用 Authenticator 吗？这将降低您的账户安全性。')) return;
+    try {
+        await ElMessageBox.confirm('确定要禁用 Authenticator 吗？这将降低您的账户安全性。', '提示', {
+            type: 'warning',
+            confirmButtonText: '确定',
+            cancelButtonText: '取消'
+        })
+    } catch {
+        return;
+    }
     totpLoading.value = true;
     try {
         const res = await authApi.disableTotp(props.userInfo.id);
@@ -578,8 +587,17 @@ const saveSettings = async () => {
   }
 }
 
-const resetSettings = () => {
-  if (confirm('确定要重置所有设置吗？这将恢复到默认配置。')) {
+const resetSettings = async () => {
+  try {
+    await ElMessageBox.confirm('确定要重置所有设置吗？这将恢复到默认配置。', '提示', {
+      type: 'warning',
+      confirmButtonText: '确定',
+      cancelButtonText: '取消'
+    })
+  } catch {
+    return
+  }
+  {
     // 重置到默认值
     Object.assign(settings, {
       systemName: 'XXG卡密系统',
@@ -633,30 +651,7 @@ const createBackup = async () => {
 }
 
 const showToast = (message, type = 'info') => {
-  const colors = {
-    success: '#28a745',
-    info: '#17a2b8',
-    warning: '#ffc107',
-    error: '#dc3545'
-  }
-  
-  const toast = document.createElement('div')
-  toast.textContent = message
-  toast.style.cssText = `
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    background: ${colors[type]};
-    color: white;
-    padding: 12px 20px;
-    border-radius: 6px;
-    z-index: 10000;
-    animation: slideInRight 0.3s ease;
-  `
-  document.body.appendChild(toast)
-  setTimeout(() => {
-    toast.remove()
-  }, 3000)
+  ElMessage({ message, type })
 }
 
 // 初始化数据

@@ -113,6 +113,7 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { pricingApi } from '../services/api.js'
 
 const timeCards = ref([])
@@ -136,7 +137,6 @@ const fetchPricing = async () => {
     }
   } catch (error) {
     console.error('Failed to fetch pricing:', error)
-    // alert('获取定价失败')
   }
 }
 
@@ -161,17 +161,26 @@ const editPricing = (item) => {
 }
 
 const deletePricing = async (id) => {
-  if (!confirm('确定要删除这个定价吗？')) return
+  try {
+    await ElMessageBox.confirm('确定要删除这个定价吗？', '确认删除', {
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消'
+    })
+  } catch {
+    return
+  }
   try {
     const res = await pricingApi.deletePricing(id)
     if (res.success) {
+      ElMessage.success('定价已删除')
       fetchPricing()
     } else {
-      alert(res.message || '删除失败')
+      ElMessage.error(res.message || '删除失败')
     }
   } catch (error) {
     console.error('Failed to delete pricing:', error)
-    alert('删除失败')
+    ElMessage.error('删除失败')
   }
 }
 
@@ -189,14 +198,15 @@ const savePricing = async () => {
     }
     
     if (res.success) {
+      ElMessage.success(isEditing.value ? '定价更新成功' : '定价添加成功')
       closeModal()
       fetchPricing()
     } else {
-      alert(res.message || '保存失败')
+      ElMessage.error(res.message || '保存失败')
     }
   } catch (error) {
     console.error('Failed to save pricing:', error)
-    alert('保存失败')
+    ElMessage.error('保存失败')
   }
 }
 

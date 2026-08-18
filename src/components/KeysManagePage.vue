@@ -509,7 +509,7 @@
 
 <script setup>
 import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import * as XLSX from 'xlsx'
 import { cardApi } from '../services/api.js'
 import { copyToClipboard } from '../utils/clipboard.js'
@@ -929,10 +929,17 @@ const toggleKeyStatus = (keyId, newStatus) => {
   emit('toggle-key-status', { id: keyId, status: newStatus })
 }
 
-const deleteKey = (keyId) => {
-  if (confirm('确定要删除这个卡密吗？此操作不可恢复！')) {
-    emit('delete-key', keyId)
+const deleteKey = async (keyId) => {
+  try {
+    await ElMessageBox.confirm('确定要删除这个卡密吗？此操作不可恢复！', '确认删除', {
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消'
+    })
+  } catch {
+    return
   }
+  emit('delete-key', keyId)
 }
 
 const copyKey = async (cardKey) => {

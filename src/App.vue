@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ElMessage } from 'element-plus'
 import HomePage from './components/HomePage.vue'
 import OnlineUnbindPage from './components/OnlineUnbindPage.vue'
 import LoginForm from './components/loginform.vue'
@@ -179,7 +180,7 @@ const handleOAuthCallback = async () => {
     console.log('[App] OAuth callback detected');
     
     if (isBinding) {
-        alert('该社交账号已被其他用户绑定！');
+        ElMessage.error('该社交账号已被其他用户绑定！');
         sessionStorage.removeItem('binding_mode');
         window.history.replaceState({}, document.title, window.location.pathname);
         return true; 
@@ -222,12 +223,12 @@ const handleOAuthCallback = async () => {
                try {
                    const res = await userProfileApi.bindSocial(registerToken);
                    if (res.success) {
-                       alert('绑定成功！');
+                        ElMessage.success('绑定成功！');
                    } else {
-                       alert(res.message || '绑定失败');
+                        ElMessage.error(res.message || '绑定失败');
                    }
                } catch (e) {
-                   alert('绑定失败: ' + e.message);
+                    ElMessage.error('绑定失败: ' + e.message);
                } finally {
                    sessionStorage.removeItem('binding_mode');
                    window.history.replaceState({}, document.title, window.location.pathname);
@@ -259,7 +260,7 @@ const handleOAuthCallback = async () => {
           const error = urlParams.get('error') || hashParams.get('error');
           if (error) {
               console.error('OAuth Error from provider:', error);
-              alert('登录失败: ' + error);
+              ElMessage.error('登录失败: ' + error);
               currentPage.value = 'login';
               return true;
           }

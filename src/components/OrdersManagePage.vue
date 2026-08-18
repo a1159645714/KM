@@ -428,6 +428,7 @@
 
 <script setup>
 import { ref, reactive, onMounted, computed } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { orderApi } from '../services/api.js'
 import { copyToClipboard } from '../utils/clipboard.js'
 
@@ -641,7 +642,13 @@ const showStatusUpdateDialog = () => {
 
 // 更新订单状态
 const updateOrderStatus = async (orderId, status, remark = '') => {
-  if (!confirm(`确定要将订单状态更新为"${getStatusText(status)}"吗？`)) {
+  try {
+    await ElMessageBox.confirm(`确定要将订单状态更新为"${getStatusText(status)}"吗？`, '提示', {
+      type: 'warning',
+      confirmButtonText: '确定',
+      cancelButtonText: '取消'
+    })
+  } catch {
     return
   }
   
@@ -677,38 +684,9 @@ const confirmStatusUpdate = () => {
   )
 }
 
-// 显示提示消息
+// 显示提示消息（Element Plus 顶部浮动通知，自动消失）
 const showToast = (message, type = 'info') => {
-  const toast = document.createElement('div')
-  toast.textContent = message
-  toast.className = `toast toast-${type}`
-  toast.style.cssText = `
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    padding: 12px 20px;
-    border-radius: 8px;
-    color: white;
-    z-index: 10000;
-    animation: slideInRight 0.3s ease;
-    font-size: 14px;
-    font-weight: 500;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  `
-  
-  const colors = {
-    success: '#28a745',
-    error: '#dc3545',
-    warning: '#ffc107',
-    info: '#17a2b8'
-  }
-  
-  toast.style.background = colors[type] || colors.info
-  document.body.appendChild(toast)
-  
-  setTimeout(() => {
-    toast.remove()
-  }, 3000)
+  ElMessage({ message, type })
 }
 
 // 组件挂载时获取数据

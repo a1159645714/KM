@@ -260,13 +260,13 @@ const handleDeleteKey = async (keyId) => {
     if (result.success) {
       // 重新加载卡密数据
       await loadKeys()
-      alert(result.message)
+      ElMessage.success(result.message || '卡密删除成功')
     } else {
-      alert(result.message)
+      ElMessage.error(result.message || '删除失败')
     }
   } catch (error) {
     console.error('删除卡密失败:', error)
-    alert('删除卡密失败')
+    ElMessage.error('删除卡密失败')
   }
 }
 
