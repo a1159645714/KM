@@ -20,6 +20,10 @@ public class DatabaseInitializer {
 
     @PostConstruct
     public void init() {
+        // 会话表必须使用大写表名(Spring Session 查询 SPRING_SESSION/SPRING_SESSION_ATTRIBUTES)。
+        // Linux MySQL 表名区分大小写,小写 spring_session 会导致 "Table 'kami.SPRING_SESSION' doesn't exist"。
+        ensureSessionTables();
+
         try {
             ResourceDatabasePopulator resourceDatabasePopulator = new ResourceDatabasePopulator(false, false, "UTF-8", new ClassPathResource("schema-advanced.sql"));
             resourceDatabasePopulator.setContinueOnError(true);
@@ -80,6 +84,38 @@ public class DatabaseInitializer {
             conn.close();
         } catch (Exception e) {
              logger.error("Password migration check failed", e);
+        }
+    }
+
+    /**
+     * 确保 Spring Session JDBC 所需的会话表存在（大写表名 + 标准列结构）。
+     * 幂等；每次启动执行，可自愈因种子导入/合并/手工清理导致的表缺失或大小写错误。
+     */
+    private void ensureSessionTables() {
+        try (java.sql.Connection conn = dataSource.getConnection();
+             java.sql.Statement stmt = conn.createStatement()) {
+            stmt.execute("CREATE TABLE IF NOT EXISTS SPRING_SESSION (" +
+                    "PRIMARY_ID CHAR(36) NOT NULL, " +
+                    "SESSION_ID CHAR(36) NOT NULL, " +
+                    "CREATION_TIME BIGINT NOT NULL, " +
+                    "LAST_ACCESS_TIME BIGINT NOT NULL, " +
+                    "MAX_INACTIVE_INTERVAL INT NOT NULL, " +
+                    "EXPIRY_TIME BIGINT NOT NULL, " +
+                    "PRINCIPAL_NAME VARCHAR(100) NULL, " +
+                    "PRIMARY KEY (PRIMARY_ID), " +
+                    "UNIQUE INDEX SPRING_SESSION_IX1 (SESSION_ID), " +
+                    "INDEX SPRING_SESSION_IX2 (EXPIRY_TIME), " +
+                    "INDEX SPRING_SESSION_IX3 (PRINCIPAL_NAME)" +
+                    ") ENGINE=InnoDB ROW_FORMAT=DYNAMIC");
+            stmt.execute("CREATE TABLE IF NOT EXISTS SPRING_SESSION_ATTRIBUTES (" +
+                    "SESSION_PRIMARY_ID CHAR(36) NOT NULL, " +
+                    "ATTRIBUTE_NAME VARCHAR(200) NOT NULL, " +
+                    "ATTRIBUTE_BYTES BLOB NOT NULL, " +
+                    "PRIMARY KEY (SESSION_PRIMARY_ID, ATTRIBUTE_NAME)" +
+                    ") ENGINE=InnoDB ROW_FORMAT=DYNAMIC");
+            logger.info("Spring Session tables ensured.");
+        } catch (Exception e) {
+            logger.error("Failed to ensure Spring Session tables", e);
         }
     }
 }

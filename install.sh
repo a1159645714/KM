@@ -2060,12 +2060,20 @@ while true; do
                         echo -e "\${BLUE}[数据库] 对比表并按需合并…\${NC}"
                         TEMP_TABLES=\$(mysql -u"\$DB_USER" -p"\$_EPW" -N -B -e "SHOW TABLES FROM \$TEMP_DB")
                         for TABLE in \$TEMP_TABLES; do
+                            # 运行时状态表绝不合并（表名大小写敏感问题与陈旧会话数据都会污染线上库）
+                            case "\$TABLE" in
+                                spring_session|spring_session_attributes|SPRING_SESSION|SPRING_SESSION_ATTRIBUTES)
+                                    continue ;;
+                            esac
                             TABLE_EXISTS=\$(mysql -u"\$DB_USER" -p"\$_EPW" -N -B -e "SELECT count(*) FROM information_schema.tables WHERE table_schema = '\$DB_NAME' AND table_name = '\$TABLE';")
                             if [ "\$TABLE_EXISTS" -eq 0 ]; then
                                 echo -e "\${GREEN}[数据库] 新增表 \$TABLE ，正在写入…\${NC}"
                                 mysqldump -u"\$DB_USER" -p"\$_EPW" "\$TEMP_DB" "\$TABLE" | mysql -u"\$DB_USER" -p"\$_EPW" "\$DB_NAME" || { update_failed=true; break; }
-                            else
+                            elif [ "\$TABLE" = "settings" ]; then
+                                # 仅 settings 允许补缺行（新版本可能新增配置键）；业务表绝不回灌种子数据，防止已删除的数据复活
                                 mysqldump -u"\$DB_USER" -p"\$_EPW" --no-create-info --insert-ignore --complete-insert "\$TEMP_DB" "\$TABLE" | mysql -u"\$DB_USER" -p"\$_EPW" "\$DB_NAME" || { update_failed=true; break; }
+                            else
+                                echo -e "\${YELLOW}[数据库] 表 \$TABLE 已存在，跳过种子数据（保留线上数据，避免已删除数据复活）。\${NC}"
                             fi
                         done
                         echo -e "\${GREEN}[数据库] 智能更新完成。\${NC}"
@@ -2771,12 +2779,20 @@ if [ -f "$SQL_FILE" ]; then
             echo -e "${BLUE}对比表并按需合并…${NC}"
             TEMP_TABLES=$(mysql -u"$DB_USER" -p"$_EFFPW" -N -B -e "SHOW TABLES FROM $TEMP_DB")
             for TABLE in $TEMP_TABLES; do
+                # 运行时状态表绝不合并（表名大小写敏感问题与陈旧会话数据都会污染线上库）
+                case "$TABLE" in
+                    spring_session|spring_session_attributes|SPRING_SESSION|SPRING_SESSION_ATTRIBUTES)
+                        continue ;;
+                esac
                 TABLE_EXISTS=$(mysql -u"$DB_USER" -p"$_EFFPW" -N -B -e "SELECT count(*) FROM information_schema.tables WHERE table_schema = '$DB_NAME' AND table_name = '$TABLE';")
                 if [ "$TABLE_EXISTS" -eq 0 ]; then
                     echo -e "${GREEN}新增表 $TABLE ，正在写入…${NC}"
                     mysqldump -u"$DB_USER" -p"$_EFFPW" "$TEMP_DB" "$TABLE" | mysql -u"$DB_USER" -p"$_EFFPW" "$DB_NAME" || return 1
-                else
+                elif [ "$TABLE" = "settings" ]; then
+                    # 仅 settings 允许补缺行（新版本可能新增配置键）；业务表绝不回灌种子数据，防止已删除的数据复活
                     mysqldump -u"$DB_USER" -p"$_EFFPW" --no-create-info --insert-ignore --complete-insert "$TEMP_DB" "$TABLE" | mysql -u"$DB_USER" -p"$_EFFPW" "$DB_NAME" || return 1
+                else
+                    echo -e "${YELLOW}表 $TABLE 已存在，跳过种子数据合并（保留线上数据）。${NC}"
                 fi
             done
             echo -e "${GREEN}数据库智能更新完成。${NC}"
@@ -3892,12 +3908,20 @@ while true; do
                         echo -e "\${BLUE}[数据库] 对比表并按需合并…\${NC}"
                         TEMP_TABLES=\$(mysql -u"\$DB_USER" -p"\$_EPW" -N -B -e "SHOW TABLES FROM \$TEMP_DB")
                         for TABLE in \$TEMP_TABLES; do
+                            # 运行时状态表绝不合并（表名大小写敏感问题与陈旧会话数据都会污染线上库）
+                            case "\$TABLE" in
+                                spring_session|spring_session_attributes|SPRING_SESSION|SPRING_SESSION_ATTRIBUTES)
+                                    continue ;;
+                            esac
                             TABLE_EXISTS=\$(mysql -u"\$DB_USER" -p"\$_EPW" -N -B -e "SELECT count(*) FROM information_schema.tables WHERE table_schema = '\$DB_NAME' AND table_name = '\$TABLE';")
                             if [ "\$TABLE_EXISTS" -eq 0 ]; then
                                 echo -e "\${GREEN}[数据库] 新增表 \$TABLE ，正在写入…\${NC}"
                                 mysqldump -u"\$DB_USER" -p"\$_EPW" "\$TEMP_DB" "\$TABLE" | mysql -u"\$DB_USER" -p"\$_EPW" "\$DB_NAME" || { update_failed=true; break; }
-                            else
+                            elif [ "\$TABLE" = "settings" ]; then
+                                # 仅 settings 允许补缺行（新版本可能新增配置键）；业务表绝不回灌种子数据，防止已删除的数据复活
                                 mysqldump -u"\$DB_USER" -p"\$_EPW" --no-create-info --insert-ignore --complete-insert "\$TEMP_DB" "\$TABLE" | mysql -u"\$DB_USER" -p"\$_EPW" "\$DB_NAME" || { update_failed=true; break; }
+                            else
+                                echo -e "\${YELLOW}[数据库] 表 \$TABLE 已存在，跳过种子数据（保留线上数据，避免已删除数据复活）。\${NC}"
                             fi
                         done
                         echo -e "\${GREEN}[数据库] 智能更新完成。\${NC}"
